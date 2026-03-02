@@ -7,11 +7,6 @@
 <p align="center">
   <strong>Autonomous Kubernetes Protection — Powered by Agentic AI</strong>
 </p>
-
-<p align="center">
-  <em>The flagship product of <a href="https://zelyo.ai">Zelyo AI</a></em>
-</p>
-
 <p align="center">
   <a href="https://github.com/aotanami/aotanami/actions/workflows/ci.yml"><img src="https://github.com/aotanami/aotanami/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/aotanami/aotanami/releases"><img src="https://img.shields.io/github/v/release/aotanami/aotanami?style=flat-square" alt="Release" /></a>
