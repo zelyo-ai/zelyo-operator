@@ -1,9 +1,12 @@
 # .golangci.yml — Production-grade linter configuration for Aotanami
 # https://golangci-lint.run/usage/configuration/
 
+version: "2"
+
 run:
   timeout: 5m
   modules-download-mode: readonly
+
 
 linters:
   enable:
@@ -23,7 +26,6 @@ linters:
     - goconst
     - gocritic
     - gocyclo
-    - goimports
     - goprintffuncname
     - gosec
     - misspell
