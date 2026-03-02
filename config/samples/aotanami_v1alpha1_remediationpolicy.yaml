@@ -1,0 +1,9 @@
+apiVersion: aotanami.zelyo.ai/v1alpha1
+kind: RemediationPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: aotanami
+    app.kubernetes.io/managed-by: kustomize
+  name: remediationpolicy-sample
+spec:
+  # TODO(user): Add fields here

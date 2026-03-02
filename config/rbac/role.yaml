@@ -1,0 +1,56 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - aotanami.zelyo.ai
+  resources:
+  - aotanamiconfigs
+  - clusterscans
+  - costpolicies
+  - gitopsrepositories
+  - monitoringpolicies
+  - notificationchannels
+  - remediationpolicies
+  - scanreports
+  - securitypolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - aotanami.zelyo.ai
+  resources:
+  - aotanamiconfigs/finalizers
+  - clusterscans/finalizers
+  - costpolicies/finalizers
+  - gitopsrepositories/finalizers
+  - monitoringpolicies/finalizers
+  - notificationchannels/finalizers
+  - remediationpolicies/finalizers
+  - scanreports/finalizers
+  - securitypolicies/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - aotanami.zelyo.ai
+  resources:
+  - aotanamiconfigs/status
+  - clusterscans/status
+  - costpolicies/status
+  - gitopsrepositories/status
+  - monitoringpolicies/status
+  - notificationchannels/status
+  - remediationpolicies/status
+  - scanreports/status
+  - securitypolicies/status
+  verbs:
+  - get
+  - patch
+  - update
