@@ -1,0 +1,148 @@
+# Aotanami Helm Chart — Default Values
+# https://github.com/zelyo-ai/aotanami
+
+# -- Number of Aotanami operator replicas
+replicaCount: 1
+
+image:
+  # -- Container image repository
+  repository: ghcr.io/zelyo-ai/aotanami
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Overrides the image tag (defaults to chart appVersion)
+  tag: ""
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+
+# -- Override the name of the chart
+nameOverride: ""
+# -- Override the full name of the chart
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a ServiceAccount
+  create: true
+  # -- Annotations for the ServiceAccount (e.g., workload identity)
+  annotations: {}
+  # -- Name of the ServiceAccount (generated if not set)
+  name: ""
+
+# -- Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8443"
+
+# -- Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- Resource requests and limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Aotanami Configuration
+config:
+  # -- Default operating mode: "audit" (alert-only) or "protect" (GitOps PRs)
+  mode: audit
+
+  llm:
+    # -- LLM provider: openrouter, openai, anthropic, azure-openai, ollama, custom
+    provider: openrouter
+    # -- LLM model identifier
+    model: "anthropic/claude-sonnet-4-20250514"
+    # -- Name of the K8s Secret containing the LLM API key (key: "api-key")
+    apiKeySecret: aotanami-llm
+    # -- Custom API endpoint (required for ollama/custom providers)
+    endpoint: ""
+    # -- LLM temperature (0.0 = deterministic, 1.0 = creative)
+    temperature: "0.1"
+    # -- Max tokens per LLM request
+    maxTokensPerRequest: 4096
+
+  tokenBudget:
+    # -- Max tokens per hour (0 = unlimited)
+    hourlyTokenLimit: 50000
+    # -- Max tokens per day (0 = unlimited)
+    dailyTokenLimit: 500000
+    # -- Max tokens per month (0 = unlimited)
+    monthlyTokenLimit: 10000000
+    # -- Alert when usage reaches this % of budget
+    alertThresholdPercent: 80
+    # -- Enable prompt/response caching
+    enableCaching: true
+    # -- Enable batching multiple findings per LLM call
+    batchingEnabled: true
+
+  dashboard:
+    # -- Enable the built-in dashboard
+    enabled: true
+    # -- Dashboard HTTP port
+    port: 8080
+    # -- URL path prefix
+    basePath: "/"
+
+  github:
+    # -- Enable GitHub App integration (required for Protect Mode)
+    enabled: false
+    # -- GitHub App ID
+    appID: 0
+    # -- GitHub App Installation ID
+    installationID: 0
+    # -- Name of K8s Secret with GitHub App private key
+    privateKeySecret: ""
+
+  telemetry:
+    # -- Enable Prometheus metrics
+    prometheusEnabled: true
+    # -- Enable OpenTelemetry tracing
+    otelEnabled: false
+    # -- OTLP collector endpoint
+    otelEndpoint: ""
+
+# Dashboard service
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Dashboard port
+  port: 8080
+
+# Ingress for dashboard access
+ingress:
+  # -- Enable ingress
+  enabled: false
+  # -- Ingress class name
+  className: ""
+  # -- Ingress annotations
+  annotations: {}
+  hosts:
+    - host: aotanami.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Tolerations
+tolerations: []
+
+# -- Affinity rules
+affinity: {}

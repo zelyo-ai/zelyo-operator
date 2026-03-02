@@ -1,0 +1,19 @@
+# Aotanami CODEOWNERS
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything
+* @zelyo-ai/core
+
+# CRDs and API types
+/api/ @zelyo-ai/core
+
+# Helm chart
+/deploy/helm/ @zelyo-ai/core
+
+# CI/CD workflows
+/.github/workflows/ @zelyo-ai/core
+
+# Security-sensitive areas
+/internal/llm/ @zelyo-ai/core
+/internal/github/ @zelyo-ai/core
+/SECURITY.md @zelyo-ai/core

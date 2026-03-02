@@ -1,0 +1,47 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+*.test
+*.out
+vendor/
+go.work
+go.work.sum
+
+# Kubebuilder
+config/crd/bases/
+config/rbac/role.yaml
+testbin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Helm
+deploy/helm/aotanami/charts/
+*.tgz
+
+# Docker
+.docker/
+
+# Coverage
+coverage.txt
+coverage.html
+cover.out
+
+# Environment
+.env
+.env.local
+
+# Temporary
+tmp/
+temp/
