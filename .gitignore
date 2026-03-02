@@ -14,8 +14,6 @@ go.work
 go.work.sum
 
 # Kubebuilder
-config/crd/bases/
-config/rbac/role.yaml
 testbin/
 
 # IDE

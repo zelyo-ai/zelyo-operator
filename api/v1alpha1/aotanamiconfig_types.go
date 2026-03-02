@@ -76,9 +76,9 @@ type LLMConfig struct {
 	Endpoint string `json:"endpoint,omitempty"`
 
 	// temperature controls the randomness of LLM outputs (0.0 = deterministic, 1.0 = creative).
-	// +kubebuilder:default="0.1"
+	// Valid range: 0.0 to 2.0. If not set, defaults to provider default.
 	// +optional
-	Temperature string `json:"temperature,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
 
 	// maxTokensPerRequest limits the max tokens per individual LLM request.
 	// +kubebuilder:validation:Minimum=100
