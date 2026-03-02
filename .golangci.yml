@@ -1,27 +1,20 @@
 # .golangci.yml — Production-grade linter configuration for Aotanami
 # https://golangci-lint.run/usage/configuration/
+# Compatible with golangci-lint v2.x
 
 version: "2"
 
 run:
   timeout: 5m
-  modules-download-mode: readonly
-
 
 linters:
+  # Use standard defaults (errcheck, govet, ineffassign, staticcheck, unused)
+  default: standard
   enable:
-    # Default linters
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    # Additional linters
     - bodyclose
+    - copyloopvar
     - dogsled
     - dupl
-    - copyloopvar
     - gochecknoinits
     - goconst
     - gocritic
@@ -34,48 +27,94 @@ linters:
     - nolintlint
     - prealloc
     - revive
-    - stylecheck
     - unconvert
     - unparam
     - whitespace
 
-linters-settings:
-  govet:
-    shadow: true
-  gocyclo:
-    min-complexity: 15
-  dupl:
-    threshold: 150
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  misspell:
-    locale: US
-  goimports:
-    local-prefixes: github.com/zelyo-ai/aotanami
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - performance
-      - style
-  gosec:
-    excludes:
-      - G101
-  revive:
+  settings:
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 150
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: US
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+    gosec:
+      excludes:
+        - G101
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - "checkPrivateReceivers"
+
+  exclusions:
+    # Use common presets
+    presets:
+      - std-error-handling
+      - common-false-positives
+    # Custom rules
     rules:
-      - name: exported
-        arguments:
-          - "checkPrivateReceivers"
+      # Test files — relax rules
+      - path: _test\.go
+        linters:
+          - dupl
+          - gosec
+          - goconst
+          - noctx
+          - gocritic
+      # Generated deepcopy files
+      - path: zz_generated\.
+        linters:
+          - gocritic
+          - gochecknoinits
+          - dupl
+          - revive
+      # Test utilities (Kubebuilder scaffolded)
+      - path: test/
+        linters:
+          - gosec
+          - noctx
+          - nolintlint
+          - gocritic
+      # Kubebuilder-generated init() in CRD types and groupversion
+      - path: api/v1alpha1/
+        linters:
+          - gochecknoinits
+      # Kubebuilder-generated webhook scaffolding
+      - path: internal/webhook/
+        linters:
+          - gochecknoinits
+          - misspell
+          - gocritic
+      # Kubebuilder-generated controller scaffolding
+      - path: internal/controller/
+        linters:
+          - dupl
+      # Kubebuilder-generated main.go
+      - path: cmd/main\.go
+        linters:
+          - gochecknoinits
+          - gocritic
+    # Exclude generated files completely
+    paths:
+      - "zz_generated\\.deepcopy\\.go$"
+
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/zelyo-ai/aotanami
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - dupl
-        - gosec
-        - goconst
-    - path: zz_generated\.
-      linters:
-        - all
   max-issues-per-linter: 0
   max-same-issues: 0

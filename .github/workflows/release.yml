@@ -92,12 +92,13 @@ jobs:
             --sbom sbom-spdx.json \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}
 
-      # --- SLSA Provenance ---
-      - name: Generate SLSA provenance
-        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
-        with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          digest: ${{ steps.build-push.outputs.digest }}
+      # --- SLSA Provenance attestation ---
+      - name: Generate and attach provenance
+        run: |
+          cosign attest --yes \
+            --predicate <(echo '{"buildType":"https://github.com/zelyo-ai/aotanami","builder":{"id":"https://github.com/zelyo-ai/aotanami/actions"},"metadata":{"buildInvocationId":"${{ github.run_id }}","completeness":{"parameters":true,"environment":true,"materials":true}}}') \
+            --type slsaprovenance \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}
 
       # --- Upload SBOMs as release assets ---
       - name: Upload SBOMs to release

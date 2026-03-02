@@ -51,7 +51,13 @@ var _ = Describe("AotanamiConfig Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: aotanamiv1alpha1.AotanamiConfigSpec{
+						LLM: aotanamiv1alpha1.LLMConfig{
+							Provider:     "openrouter",
+							Model:        "test-model",
+							APIKeySecret: "test-secret",
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

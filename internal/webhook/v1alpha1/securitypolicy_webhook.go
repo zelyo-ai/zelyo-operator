@@ -26,7 +26,6 @@ import (
 	aotanamiv1alpha1 "github.com/zelyo-ai/aotanami/api/v1alpha1"
 )
 
-// nolint:unused
 // log is for logging in this package.
 var securitypolicylog = logf.Log.WithName("securitypolicy-resource")
 

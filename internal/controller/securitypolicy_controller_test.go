@@ -51,7 +51,18 @@ var _ = Describe("SecurityPolicy Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: aotanamiv1alpha1.SecurityPolicySpec{
+						Severity: "medium",
+						Match: aotanamiv1alpha1.PolicyMatch{
+							Namespaces: []string{"default"},
+						},
+						Rules: []aotanamiv1alpha1.SecurityRule{
+							{
+								Name: "test-rule",
+								Type: "container-security-context",
+							},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

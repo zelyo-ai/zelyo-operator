@@ -53,7 +53,7 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
-// nolint:gocyclo
+//nolint:gocyclo
 func main() {
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
@@ -242,7 +242,7 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "GitOpsRepository")
 		os.Exit(1)
 	}
-	// nolint:goconst
+
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err := webhookv1alpha1.SetupSecurityPolicyWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create webhook", "webhook", "SecurityPolicy")

@@ -51,7 +51,9 @@ var _ = Describe("RemediationPolicy Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: aotanamiv1alpha1.RemediationPolicySpec{
+						GitOpsRepository: "test-repo",
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
