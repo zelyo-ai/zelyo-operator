@@ -35,10 +35,12 @@ type PodSecurityScanner struct{}
 
 var _ Scanner = &PodSecurityScanner{}
 
+// Name implements Scanner.
 func (s *PodSecurityScanner) Name() string {
 	return "Pod Security"
 }
 
+// RuleType implements Scanner.
 func (s *PodSecurityScanner) RuleType() string {
 	return aotanamiv1alpha1.RuleTypePodSecurity
 }
@@ -52,6 +54,9 @@ var dangerousCapabilities = map[corev1.Capability]bool{
 	"DAC_OVERRIDE": true,
 }
 
+// Scan implements Scanner.
+//
+//nolint:gocyclo // Scanner logic evaluates multiple interrelated pod fields
 func (s *PodSecurityScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[string]string) ([]Finding, error) {
 	var findings []Finding
 
@@ -101,7 +106,8 @@ func (s *PodSecurityScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[st
 		}
 
 		// Check: HostPath volumes
-		for _, vol := range pod.Spec.Volumes {
+		for i := range pod.Spec.Volumes {
+			vol := &pod.Spec.Volumes[i]
 			if vol.HostPath != nil {
 				sev := aotanamiv1alpha1.SeverityHigh
 				if strings.HasPrefix(vol.HostPath.Path, "/var/run/docker.sock") ||

@@ -34,10 +34,12 @@ type RBACAuditScanner struct{}
 
 var _ Scanner = &RBACAuditScanner{}
 
+// Name implements Scanner.
 func (s *RBACAuditScanner) Name() string {
 	return "RBAC Audit"
 }
 
+// RuleType implements Scanner.
 func (s *RBACAuditScanner) RuleType() string {
 	return aotanamiv1alpha1.RuleTypeRBACAudit
 }
@@ -45,6 +47,7 @@ func (s *RBACAuditScanner) RuleType() string {
 // dangerousSANames are service account name patterns that suggest overly broad permissions.
 var dangerousSANames = []string{"admin", "cluster-admin", "superuser", "root"}
 
+// Scan implements Scanner.
 func (s *RBACAuditScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[string]string) ([]Finding, error) {
 	var findings []Finding
 

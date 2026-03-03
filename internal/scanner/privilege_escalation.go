@@ -34,14 +34,19 @@ type PrivilegeEscalationScanner struct{}
 
 var _ Scanner = &PrivilegeEscalationScanner{}
 
+// Name implements Scanner.
 func (s *PrivilegeEscalationScanner) Name() string {
 	return "Privilege Escalation"
 }
 
+// RuleType implements Scanner.
 func (s *PrivilegeEscalationScanner) RuleType() string {
 	return aotanamiv1alpha1.RuleTypePrivilegeEscalation
 }
 
+// Scan implements Scanner.
+//
+//nolint:gocyclo // Container iteration involves multiple contextual checks
 func (s *PrivilegeEscalationScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[string]string) ([]Finding, error) {
 	var findings []Finding
 

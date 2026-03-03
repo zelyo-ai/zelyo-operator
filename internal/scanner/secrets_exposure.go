@@ -34,10 +34,12 @@ type SecretsExposureScanner struct{}
 
 var _ Scanner = &SecretsExposureScanner{}
 
+// Name implements Scanner.
 func (s *SecretsExposureScanner) Name() string {
 	return "Secrets Exposure"
 }
 
+// RuleType implements Scanner.
 func (s *SecretsExposureScanner) RuleType() string {
 	return aotanamiv1alpha1.RuleTypeSecretsExposure
 }
@@ -48,6 +50,7 @@ var sensitiveKeywords = []string{
 	"access_key", "private_key", "credentials", "auth",
 }
 
+// Scan implements Scanner.
 func (s *SecretsExposureScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[string]string) ([]Finding, error) {
 	var findings []Finding
 

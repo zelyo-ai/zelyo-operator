@@ -66,6 +66,8 @@ type ClusterScanReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile runs the scan lifecycle for a ClusterScan resource.
+//
+//nolint:gocyclo // Controller logic is inherently complex
 func (r *ClusterScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -144,7 +146,7 @@ func (r *ClusterScanReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Run each requested scanner.
 	var allFindings []aotanamiv1alpha1.Finding
 	var summary aotanamiv1alpha1.ScanSummary
-	summary.ResourcesScanned = int32(len(pods)) //nolint:gosec
+	summary.ResourcesScanned = int32(len(pods)) //nolint:gosec // Pod count is bounded
 
 	for _, scannerName := range scan.Spec.Scanners {
 		s := r.ScannerRegistry.Get(scannerName)
@@ -159,7 +161,8 @@ func (r *ClusterScanReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			continue
 		}
 
-		for _, f := range results {
+		for i := range results {
+			f := &results[i]
 			finding := aotanamiv1alpha1.Finding{
 				ID:          fmt.Sprintf("%s-%s-%s-%s", f.RuleType, f.ResourceNamespace, f.ResourceName, f.Title[:min(len(f.Title), 20)]),
 				Severity:    f.Severity,
@@ -191,7 +194,7 @@ func (r *ClusterScanReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	summary.TotalFindings = int32(len(allFindings)) //nolint:gosec
+	summary.TotalFindings = int32(len(allFindings)) //nolint:gosec // Findings count is bounded
 
 	// ── Create ScanReport child resource ──
 	reportName := fmt.Sprintf("%s-%d", scan.Name, time.Now().Unix())
@@ -284,7 +287,8 @@ func (r *ClusterScanReconciler) resolveTargetPods(ctx context.Context, scan *aot
 		for _, ns := range scan.Spec.Scope.ExcludeNamespaces {
 			excludeSet[ns] = true
 		}
-		for _, ns := range nsList.Items {
+		for i := range nsList.Items {
+			ns := &nsList.Items[i]
 			if excludeSet[ns.Name] {
 				continue
 			}
@@ -345,6 +349,7 @@ func (r *ClusterScanReconciler) enforceHistoryLimit(ctx context.Context, scan *a
 		return fmt.Errorf("listing ScanReports: %w", err)
 	}
 
+	//nolint:gosec // list length is bounded
 	if int32(len(reportList.Items)) <= historyLimit {
 		return nil
 	}
@@ -355,6 +360,7 @@ func (r *ClusterScanReconciler) enforceHistoryLimit(ctx context.Context, scan *a
 	})
 
 	// Delete oldest reports exceeding the limit.
+	//nolint:gosec // list length is bounded
 	toDelete := int32(len(reportList.Items)) - historyLimit
 	for i := int32(0); i < toDelete; i++ {
 		if err := r.Delete(ctx, &reportList.Items[i]); err != nil && !errors.IsNotFound(err) {
@@ -364,14 +370,6 @@ func (r *ClusterScanReconciler) enforceHistoryLimit(ctx context.Context, scan *a
 	}
 
 	return nil
-}
-
-// min returns the smaller of two ints.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // SetupWithManager sets up the controller with the Manager.

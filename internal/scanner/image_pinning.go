@@ -34,14 +34,17 @@ type ImagePinningScanner struct{}
 
 var _ Scanner = &ImagePinningScanner{}
 
+// Name implements Scanner.
 func (s *ImagePinningScanner) Name() string {
 	return "Image Pinning"
 }
 
+// RuleType implements Scanner.
 func (s *ImagePinningScanner) RuleType() string {
 	return aotanamiv1alpha1.RuleTypeImageVulnerability
 }
 
+// Scan implements Scanner.
 func (s *ImagePinningScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[string]string) ([]Finding, error) {
 	var findings []Finding
 

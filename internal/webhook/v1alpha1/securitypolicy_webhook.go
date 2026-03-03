@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -34,7 +35,8 @@ var securitypolicylog = logf.Log.WithName("securitypolicy-resource")
 
 // SetupSecurityPolicyWebhookWithManager registers the webhook for SecurityPolicy in the manager.
 func SetupSecurityPolicyWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &aotanamiv1alpha1.SecurityPolicy{}).
+	return ctrl.NewWebhookManagedBy(mgr).
+		For(&aotanamiv1alpha1.SecurityPolicy{}).
 		WithValidator(&SecurityPolicyCustomValidator{}).
 		WithDefaulter(&SecurityPolicyCustomDefaulter{}).
 		Complete()
@@ -47,22 +49,22 @@ func SetupSecurityPolicyWebhookWithManager(mgr ctrl.Manager) error {
 type SecurityPolicyCustomDefaulter struct{}
 
 // Default implements webhook.CustomDefaulter.
-func (d *SecurityPolicyCustomDefaulter) Default(_ context.Context, obj *aotanamiv1alpha1.SecurityPolicy) error {
-	securitypolicylog.Info("Defaulting for SecurityPolicy", "name", obj.GetName())
+func (d *SecurityPolicyCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
+	policy, ok := obj.(*aotanamiv1alpha1.SecurityPolicy)
+	if !ok {
+		return fmt.Errorf("expected a SecurityPolicy object but got %T", obj)
+	}
+	securitypolicylog.Info("Defaulting for SecurityPolicy", "name", policy.GetName())
 
 	// Default severity to "medium" if not set.
-	if obj.Spec.Severity == "" {
-		obj.Spec.Severity = aotanamiv1alpha1.SeverityMedium
+	if policy.Spec.Severity == "" {
+		policy.Spec.Severity = aotanamiv1alpha1.SeverityMedium
 	}
 
 	// Default each rule's enforce field to true.
-	for i := range obj.Spec.Rules {
-		// Enforce defaults to true — only need to set if the struct was zero-valued.
-		// Since bool zero = false, we check if this is a new rule that hasn't been
-		// explicitly set. The kubebuilder default handles this in CRD schema,
-		// but we also enforce it here for programmatic creates.
-		if !obj.Spec.Rules[i].Enforce {
-			obj.Spec.Rules[i].Enforce = true
+	for i := range policy.Spec.Rules {
+		if !policy.Spec.Rules[i].Enforce {
+			policy.Spec.Rules[i].Enforce = true
 		}
 	}
 
@@ -97,19 +99,27 @@ var validSeverities = map[string]bool{
 type SecurityPolicyCustomValidator struct{}
 
 // ValidateCreate implements webhook.CustomValidator.
-func (v *SecurityPolicyCustomValidator) ValidateCreate(_ context.Context, obj *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
-	securitypolicylog.Info("Validation for SecurityPolicy upon creation", "name", obj.GetName())
-	return v.validate(obj)
+func (v *SecurityPolicyCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+	policy, ok := obj.(*aotanamiv1alpha1.SecurityPolicy)
+	if !ok {
+		return nil, fmt.Errorf("expected a SecurityPolicy object but got %T", obj)
+	}
+	securitypolicylog.Info("Validation for SecurityPolicy upon creation", "name", policy.GetName())
+	return v.validate(policy)
 }
 
 // ValidateUpdate implements webhook.CustomValidator.
-func (v *SecurityPolicyCustomValidator) ValidateUpdate(_ context.Context, _, newObj *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
-	securitypolicylog.Info("Validation for SecurityPolicy upon update", "name", newObj.GetName())
-	return v.validate(newObj)
+func (v *SecurityPolicyCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
+	policy, ok := newObj.(*aotanamiv1alpha1.SecurityPolicy)
+	if !ok {
+		return nil, fmt.Errorf("expected a SecurityPolicy object but got %T", newObj)
+	}
+	securitypolicylog.Info("Validation for SecurityPolicy upon update", "name", policy.GetName())
+	return v.validate(policy)
 }
 
 // ValidateDelete implements webhook.CustomValidator.
-func (v *SecurityPolicyCustomValidator) ValidateDelete(_ context.Context, _ *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
+func (v *SecurityPolicyCustomValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	// No validation needed on delete.
 	return nil, nil
 }

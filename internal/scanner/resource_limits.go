@@ -31,14 +31,17 @@ type ResourceLimitsScanner struct{}
 
 var _ Scanner = &ResourceLimitsScanner{}
 
+// Name implements Scanner.
 func (s *ResourceLimitsScanner) Name() string {
 	return "Resource Limits"
 }
 
+// RuleType implements Scanner.
 func (s *ResourceLimitsScanner) RuleType() string {
 	return aotanamiv1alpha1.RuleTypeResourceLimits
 }
 
+// Scan implements Scanner.
 func (s *ResourceLimitsScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[string]string) ([]Finding, error) {
 	var findings []Finding
 

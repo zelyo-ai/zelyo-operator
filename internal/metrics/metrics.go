@@ -151,7 +151,7 @@ var (
 	)
 )
 
-func init() {
+func init() { //nolint:gochecknoinits // standard practice for prometheus
 	// Register all custom metrics with the controller-runtime metrics registry.
 	metrics.Registry.MustRegister(
 		ReconcileTotal,

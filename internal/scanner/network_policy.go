@@ -36,14 +36,17 @@ type NetworkPolicyScanner struct{}
 
 var _ Scanner = &NetworkPolicyScanner{}
 
+// Name implements Scanner.
 func (s *NetworkPolicyScanner) Name() string {
 	return "Network Policy"
 }
 
+// RuleType implements Scanner.
 func (s *NetworkPolicyScanner) RuleType() string {
 	return aotanamiv1alpha1.RuleTypeNetworkPolicy
 }
 
+// Scan implements Scanner.
 func (s *NetworkPolicyScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[string]string) ([]Finding, error) {
 	var findings []Finding
 
@@ -74,8 +77,8 @@ func (s *NetworkPolicyScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[
 			})
 		}
 
-		// Check: Pods using hostPort — bypasses NetworkPolicy.
-		for _, container := range pod.Spec.Containers {
+		for i := range pod.Spec.Containers {
+			container := &pod.Spec.Containers[i]
 			for _, port := range container.Ports {
 				if port.HostPort > 0 {
 					findings = append(findings, Finding{

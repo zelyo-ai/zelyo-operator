@@ -131,9 +131,10 @@ func (r *SecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 
 		// Filter findings by severity threshold.
-		for _, f := range findings {
+		for i := range findings {
+			f := &findings[i]
 			if severityOrder[f.Severity] <= minSeverity {
-				allFindings = append(allFindings, f)
+				allFindings = append(allFindings, *f)
 			}
 		}
 	}
@@ -145,7 +146,7 @@ func (r *SecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// ── Step 3: Update status ──
 	now := metav1.Now()
-	policy.Status.ViolationCount = int32(len(allFindings)) //nolint:gosec
+	policy.Status.ViolationCount = int32(len(allFindings)) //nolint:gosec // Count is bounded
 	policy.Status.LastEvaluated = &now
 	policy.Status.ObservedGeneration = policy.Generation
 
@@ -166,7 +167,8 @@ func (r *SecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if len(allFindings) < limit {
 			limit = len(allFindings)
 		}
-		for _, f := range allFindings[:limit] {
+		for i := range allFindings[:limit] {
+			f := &allFindings[i]
 			log.Info("Violation detected",
 				"severity", f.Severity,
 				"title", f.Title,
@@ -185,7 +187,8 @@ func (r *SecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// Record metrics.
 	aotmetrics.PolicyViolationsGauge.WithLabelValues(policy.Name, policy.Namespace, policy.Spec.Severity).Set(float64(len(allFindings)))
-	for _, f := range allFindings {
+	for i := range allFindings {
+		f := &allFindings[i]
 		aotmetrics.ScanFindingsTotal.WithLabelValues("securitypolicy", f.Severity).Inc()
 	}
 	aotmetrics.ResourcesScannedTotal.WithLabelValues("securitypolicy").Add(float64(len(pods)))
@@ -220,7 +223,8 @@ func (r *SecurityPolicyReconciler) resolveTargetPods(ctx context.Context, policy
 		for _, ns := range policy.Spec.Match.ExcludeNamespaces {
 			excludeSet[ns] = true
 		}
-		for _, ns := range nsList.Items {
+		for i := range nsList.Items {
+			ns := &nsList.Items[i]
 			if excludeSet[ns.Name] {
 				continue
 			}

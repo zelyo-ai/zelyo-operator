@@ -34,14 +34,17 @@ type ContainerSecurityContextScanner struct{}
 
 var _ Scanner = &ContainerSecurityContextScanner{}
 
+// Name implements Scanner.
 func (s *ContainerSecurityContextScanner) Name() string {
 	return "Container Security Context"
 }
 
+// RuleType implements Scanner.
 func (s *ContainerSecurityContextScanner) RuleType() string {
 	return aotanamiv1alpha1.RuleTypeContainerSecurityContext
 }
 
+// Scan implements Scanner.
 func (s *ContainerSecurityContextScanner) Scan(_ context.Context, pods []corev1.Pod, _ map[string]string) ([]Finding, error) {
 	var findings []Finding
 

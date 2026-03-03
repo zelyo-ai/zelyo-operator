@@ -37,17 +37,18 @@ func Set(conditions *[]metav1.Condition, conditionType string, status metav1.Con
 	now := metav1.NewTime(time.Now())
 
 	for i := range *conditions {
-		if (*conditions)[i].Type == conditionType {
-			// Only update LastTransitionTime if status actually changed.
-			if (*conditions)[i].Status != status {
-				(*conditions)[i].LastTransitionTime = now
-			}
-			(*conditions)[i].Status = status
-			(*conditions)[i].Reason = reason
-			(*conditions)[i].Message = message
-			(*conditions)[i].ObservedGeneration = observedGeneration
-			return
+		if (*conditions)[i].Type != conditionType {
+			continue
 		}
+		// Only update LastTransitionTime if status actually changed.
+		if (*conditions)[i].Status != status {
+			(*conditions)[i].LastTransitionTime = now
+		}
+		(*conditions)[i].Status = status
+		(*conditions)[i].Reason = reason
+		(*conditions)[i].Message = message
+		(*conditions)[i].ObservedGeneration = observedGeneration
+		return
 	}
 
 	// Condition type not found — append new condition.

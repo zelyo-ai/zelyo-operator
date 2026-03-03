@@ -695,6 +695,7 @@ func TestRegistry_DuplicatePanics(t *testing.T) {
 
 // ─── Helpers ───
 
+//nolint:unparam // test helper
 func makePod(name, namespace string, containers ...corev1.Container) corev1.Pod {
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

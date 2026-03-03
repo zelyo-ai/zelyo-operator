@@ -49,6 +49,8 @@ type CostPolicyReconciler struct {
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
 // Reconcile validates the CostPolicy and evaluates workload resource usage.
+//
+//nolint:gocyclo // Controller logic is inherently complex
 func (r *CostPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -72,7 +74,8 @@ func (r *CostPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err := r.List(ctx, nsList); err != nil {
 			return ctrl.Result{}, fmt.Errorf("listing namespaces: %w", err)
 		}
-		for _, ns := range nsList.Items {
+		for i := range nsList.Items {
+			ns := &nsList.Items[i]
 			targetNamespaces = append(targetNamespaces, ns.Name)
 		}
 	}
@@ -89,7 +92,9 @@ func (r *CostPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				continue
 			}
 			totalPods++
-			for _, c := range podList.Items[i].Spec.Containers {
+			// Count containers without limits
+			for j := range podList.Items[i].Spec.Containers {
+				c := &podList.Items[i].Spec.Containers[j]
 				if c.Resources.Limits.Cpu() == nil || c.Resources.Limits.Cpu().IsZero() ||
 					c.Resources.Limits.Memory() == nil || c.Resources.Limits.Memory().IsZero() {
 					podsWithoutLimits++
