@@ -214,6 +214,11 @@ spec:
                 description: lastSyncedCommit is the SHA of the last successfully
                   synced commit.
                 type: string
+              observedGeneration:
+                description: observedGeneration is the most recent generation observed
+                  by the controller.
+                format: int64
+                type: integer
               phase:
                 description: phase indicates the current lifecycle phase.
                 enum:

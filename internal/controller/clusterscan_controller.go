@@ -18,46 +18,368 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	aotanamiv1alpha1 "github.com/aotanami/aotanami/api/v1alpha1"
+	"github.com/aotanami/aotanami/internal/conditions"
+	aotmetrics "github.com/aotanami/aotanami/internal/metrics"
+	"github.com/aotanami/aotanami/internal/scanner"
 )
 
-// ClusterScanReconciler reconciles a ClusterScan object
+const (
+	// clusterScanFinalizer is the finalizer for cleaning up child ScanReports.
+	clusterScanFinalizer = "aotanami.com/clusterscan-cleanup"
+
+	// defaultScanInterval is the default requeue interval for scans without a schedule.
+	defaultScanInterval = 30 * time.Minute
+)
+
+// ClusterScanReconciler reconciles a ClusterScan object.
+// It runs security and compliance scans, creates ScanReport child resources
+// to store results, and manages scan history cleanup.
 type ClusterScanReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme          *runtime.Scheme
+	Recorder        record.EventRecorder
+	ScannerRegistry *scanner.Registry
 }
 
 // +kubebuilder:rbac:groups=aotanami.com,resources=clusterscans,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=aotanami.com,resources=clusterscans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=aotanami.com,resources=clusterscans/finalizers,verbs=update
+// +kubebuilder:rbac:groups=aotanami.com,resources=scanreports,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ClusterScan object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
+// Reconcile runs the scan lifecycle for a ClusterScan resource.
 //
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/reconcile
+//nolint:gocyclo // Controller logic is inherently complex
 func (r *ClusterScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	log := logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	// Fetch the ClusterScan.
+	scan := &aotanamiv1alpha1.ClusterScan{}
+	if err := r.Get(ctx, req.NamespacedName, scan); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("fetching ClusterScan: %w", err)
+	}
 
-	return ctrl.Result{}, nil
+	log.Info("Reconciling ClusterScan", "name", scan.Name, "namespace", scan.Namespace,
+		"generation", scan.Generation, "scanners", scan.Spec.Scanners)
+
+	// ── Handle deletion / finalizer ──
+	if !scan.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(scan, clusterScanFinalizer) {
+			if err := r.cleanupScanReports(ctx, scan); err != nil {
+				return ctrl.Result{}, fmt.Errorf("cleaning up ScanReports: %w", err)
+			}
+			controllerutil.RemoveFinalizer(scan, clusterScanFinalizer)
+			if err := r.Update(ctx, scan); err != nil {
+				return ctrl.Result{}, fmt.Errorf("removing finalizer: %w", err)
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Ensure finalizer is set.
+	if !controllerutil.ContainsFinalizer(scan, clusterScanFinalizer) {
+		controllerutil.AddFinalizer(scan, clusterScanFinalizer)
+		if err := r.Update(ctx, scan); err != nil {
+			return ctrl.Result{}, fmt.Errorf("adding finalizer: %w", err)
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// ── Check if suspended ──
+	if scan.Spec.Suspend {
+		log.Info("ClusterScan is suspended — skipping")
+		conditions.MarkFalse(&scan.Status.Conditions, aotanamiv1alpha1.ConditionReady,
+			"Suspended", "Scan is suspended", scan.Generation)
+		scan.Status.Phase = aotanamiv1alpha1.PhasePending
+		if err := r.Status().Update(ctx, scan); err != nil {
+			return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
+		}
+		return ctrl.Result{RequeueAfter: defaultScanInterval}, nil
+	}
+
+	// ── Run the scan ──
+	r.Recorder.Event(scan, corev1.EventTypeNormal, aotanamiv1alpha1.EventReasonScanStarted,
+		fmt.Sprintf("Starting cluster scan with %d scanners", len(scan.Spec.Scanners)))
+
+	scan.Status.Phase = aotanamiv1alpha1.PhaseRunning
+	conditions.MarkUnknown(&scan.Status.Conditions, aotanamiv1alpha1.ConditionReady,
+		aotanamiv1alpha1.ReasonProgressingMessage, "Scan in progress", scan.Generation)
+	if err := r.Status().Update(ctx, scan); err != nil {
+		return ctrl.Result{}, fmt.Errorf("updating status to Running: %w", err)
+	}
+
+	// Resolve target pods.
+	pods, err := r.resolveTargetPods(ctx, scan)
+	if err != nil {
+		r.Recorder.Event(scan, corev1.EventTypeWarning, aotanamiv1alpha1.EventReasonReconcileError,
+			fmt.Sprintf("Failed to resolve target pods: %v", err))
+		scan.Status.Phase = aotanamiv1alpha1.PhaseFailed
+		conditions.MarkFalse(&scan.Status.Conditions, aotanamiv1alpha1.ConditionReady,
+			aotanamiv1alpha1.ReasonReconcileFailed, fmt.Sprintf("Target resolution failed: %v", err), scan.Generation)
+		if statusErr := r.Status().Update(ctx, scan); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("updating status: %w", statusErr)
+		}
+		return ctrl.Result{RequeueAfter: defaultScanInterval}, nil
+	}
+
+	// Run each requested scanner.
+	var allFindings []aotanamiv1alpha1.Finding
+	var summary aotanamiv1alpha1.ScanSummary
+	summary.ResourcesScanned = int32(len(pods)) //nolint:gosec // Pod count is bounded
+
+	for _, scannerName := range scan.Spec.Scanners {
+		s := r.ScannerRegistry.Get(scannerName)
+		if s == nil {
+			log.Info("No scanner registered — skipping", "scanner", scannerName)
+			continue
+		}
+
+		results, scanErr := s.Scan(ctx, pods, nil)
+		if scanErr != nil {
+			log.Error(scanErr, "Scanner failed", "scanner", s.Name())
+			continue
+		}
+
+		for i := range results {
+			f := &results[i]
+			finding := aotanamiv1alpha1.Finding{
+				ID:          fmt.Sprintf("%s-%s-%s-%s", f.RuleType, f.ResourceNamespace, f.ResourceName, f.Title[:min(len(f.Title), 20)]),
+				Severity:    f.Severity,
+				Category:    f.RuleType,
+				Title:       f.Title,
+				Description: f.Description,
+				Resource: aotanamiv1alpha1.AffectedResource{
+					Kind:      f.ResourceKind,
+					Namespace: f.ResourceNamespace,
+					Name:      f.ResourceName,
+				},
+				Recommendation: f.Recommendation,
+			}
+			allFindings = append(allFindings, finding)
+
+			// Update summary counts.
+			switch f.Severity {
+			case aotanamiv1alpha1.SeverityCritical:
+				summary.Critical++
+			case aotanamiv1alpha1.SeverityHigh:
+				summary.High++
+			case aotanamiv1alpha1.SeverityMedium:
+				summary.Medium++
+			case aotanamiv1alpha1.SeverityLow:
+				summary.Low++
+			case aotanamiv1alpha1.SeverityInfo:
+				summary.Info++
+			}
+		}
+	}
+
+	summary.TotalFindings = int32(len(allFindings)) //nolint:gosec // Findings count is bounded
+
+	// ── Create ScanReport child resource ──
+	reportName := fmt.Sprintf("%s-%d", scan.Name, time.Now().Unix())
+	report := &aotanamiv1alpha1.ScanReport{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      reportName,
+			Namespace: scan.Namespace,
+			Labels: map[string]string{
+				"aotanami.com/scan": scan.Name,
+			},
+		},
+		Spec: aotanamiv1alpha1.ScanReportSpec{
+			ScanRef:  scan.Name,
+			Findings: allFindings,
+			Summary:  summary,
+		},
+	}
+
+	// Set owner reference so reports are GC'd with the scan.
+	if err := controllerutil.SetControllerReference(scan, report, r.Scheme); err != nil {
+		return ctrl.Result{}, fmt.Errorf("setting owner reference on ScanReport: %w", err)
+	}
+
+	if err := r.Create(ctx, report); err != nil {
+		return ctrl.Result{}, fmt.Errorf("creating ScanReport: %w", err)
+	}
+
+	// Mark the report as complete.
+	report.Status.Phase = aotanamiv1alpha1.PhaseComplete
+	conditions.MarkTrue(&report.Status.Conditions, aotanamiv1alpha1.ConditionReady,
+		aotanamiv1alpha1.ReasonReconcileSuccess, "Report is complete", report.Generation)
+	if err := r.Status().Update(ctx, report); err != nil {
+		log.Error(err, "Failed to update ScanReport status")
+	}
+
+	// ── Enforce history limit ──
+	if err := r.enforceHistoryLimit(ctx, scan); err != nil {
+		log.Error(err, "Failed to enforce history limit")
+	}
+
+	// ── Update ClusterScan status ──
+	now := metav1.Now()
+	scan.Status.Phase = aotanamiv1alpha1.PhaseCompleted
+	scan.Status.LastScheduleTime = &now
+	scan.Status.CompletedAt = &now
+	scan.Status.FindingsCount = summary.TotalFindings
+	scan.Status.LastReportName = reportName
+
+	conditions.MarkTrue(&scan.Status.Conditions, aotanamiv1alpha1.ConditionScanCompleted,
+		aotanamiv1alpha1.ReasonScanSuccess,
+		fmt.Sprintf("Scan completed: %d findings across %d resources", summary.TotalFindings, summary.ResourcesScanned),
+		scan.Generation)
+	conditions.MarkTrue(&scan.Status.Conditions, aotanamiv1alpha1.ConditionReady,
+		aotanamiv1alpha1.ReasonReconcileSuccess, "Scan completed successfully", scan.Generation)
+
+	if err := r.Status().Update(ctx, scan); err != nil {
+		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
+	}
+
+	r.Recorder.Event(scan, corev1.EventTypeNormal, aotanamiv1alpha1.EventReasonScanCompleted,
+		fmt.Sprintf("Scan completed: %d findings (C:%d H:%d M:%d L:%d I:%d) — report: %s",
+			summary.TotalFindings, summary.Critical, summary.High, summary.Medium, summary.Low, summary.Info, reportName))
+
+	log.Info("ClusterScan completed",
+		"findings", summary.TotalFindings,
+		"report", reportName,
+		"resourcesScanned", summary.ResourcesScanned)
+
+	// Record metrics.
+	aotmetrics.ClusterScanCompletedTotal.WithLabelValues(scan.Name, scan.Namespace).Inc()
+	aotmetrics.ClusterScanFindingsGauge.WithLabelValues(scan.Name, scan.Namespace).Set(float64(summary.TotalFindings))
+	aotmetrics.ResourcesScannedTotal.WithLabelValues("clusterscan").Add(float64(summary.ResourcesScanned))
+	aotmetrics.ReconcileTotal.WithLabelValues("clusterscan", "success").Inc()
+
+	return ctrl.Result{RequeueAfter: defaultScanInterval}, nil
+}
+
+// resolveTargetPods lists running pods matching the scan's scope.
+func (r *ClusterScanReconciler) resolveTargetPods(ctx context.Context, scan *aotanamiv1alpha1.ClusterScan) ([]corev1.Pod, error) {
+	var targetNamespaces []string
+
+	if len(scan.Spec.Scope.Namespaces) > 0 {
+		targetNamespaces = scan.Spec.Scope.Namespaces
+	} else {
+		nsList := &corev1.NamespaceList{}
+		if err := r.List(ctx, nsList); err != nil {
+			return nil, fmt.Errorf("listing namespaces: %w", err)
+		}
+		excludeSet := make(map[string]bool, len(scan.Spec.Scope.ExcludeNamespaces))
+		for _, ns := range scan.Spec.Scope.ExcludeNamespaces {
+			excludeSet[ns] = true
+		}
+		for i := range nsList.Items {
+			ns := &nsList.Items[i]
+			if excludeSet[ns.Name] {
+				continue
+			}
+			targetNamespaces = append(targetNamespaces, ns.Name)
+		}
+	}
+
+	var allPods []corev1.Pod
+	for _, ns := range targetNamespaces {
+		podList := &corev1.PodList{}
+		if err := r.List(ctx, podList, client.InNamespace(ns)); err != nil {
+			return nil, fmt.Errorf("listing pods in namespace %q: %w", ns, err)
+		}
+		for i := range podList.Items {
+			if podList.Items[i].Status.Phase == corev1.PodRunning {
+				allPods = append(allPods, podList.Items[i])
+			}
+		}
+	}
+
+	return allPods, nil
+}
+
+// cleanupScanReports removes all ScanReport resources owned by this ClusterScan.
+func (r *ClusterScanReconciler) cleanupScanReports(ctx context.Context, scan *aotanamiv1alpha1.ClusterScan) error {
+	log := logf.FromContext(ctx)
+
+	reportList := &aotanamiv1alpha1.ScanReportList{}
+	if err := r.List(ctx, reportList,
+		client.InNamespace(scan.Namespace),
+		client.MatchingLabels{"aotanami.com/scan": scan.Name}); err != nil {
+		return fmt.Errorf("listing ScanReports: %w", err)
+	}
+
+	for i := range reportList.Items {
+		if err := r.Delete(ctx, &reportList.Items[i]); err != nil && !errors.IsNotFound(err) {
+			return fmt.Errorf("deleting ScanReport %q: %w", reportList.Items[i].Name, err)
+		}
+		log.Info("Deleted ScanReport", "name", reportList.Items[i].Name)
+	}
+
+	return nil
+}
+
+// enforceHistoryLimit removes old ScanReports exceeding the history limit.
+func (r *ClusterScanReconciler) enforceHistoryLimit(ctx context.Context, scan *aotanamiv1alpha1.ClusterScan) error {
+	log := logf.FromContext(ctx)
+
+	historyLimit := scan.Spec.HistoryLimit
+	if historyLimit <= 0 {
+		historyLimit = 10
+	}
+
+	reportList := &aotanamiv1alpha1.ScanReportList{}
+	if err := r.List(ctx, reportList,
+		client.InNamespace(scan.Namespace),
+		client.MatchingLabels{"aotanami.com/scan": scan.Name}); err != nil {
+		return fmt.Errorf("listing ScanReports: %w", err)
+	}
+
+	//nolint:gosec // list length is bounded
+	if int32(len(reportList.Items)) <= historyLimit {
+		return nil
+	}
+
+	// Sort by creation time (oldest first).
+	sort.Slice(reportList.Items, func(i, j int) bool {
+		return reportList.Items[i].CreationTimestamp.Before(&reportList.Items[j].CreationTimestamp)
+	})
+
+	// Delete oldest reports exceeding the limit.
+	//nolint:gosec // list length is bounded
+	toDelete := int32(len(reportList.Items)) - historyLimit
+	for i := int32(0); i < toDelete; i++ {
+		if err := r.Delete(ctx, &reportList.Items[i]); err != nil && !errors.IsNotFound(err) {
+			return fmt.Errorf("deleting old ScanReport %q: %w", reportList.Items[i].Name, err)
+		}
+		log.Info("Pruned old ScanReport", "name", reportList.Items[i].Name)
+	}
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterScanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&aotanamiv1alpha1.ClusterScan{}).
+		Owns(&aotanamiv1alpha1.ScanReport{}).
 		Named("clusterscan").
 		Complete(r)
 }
+
+// Ensure the ClusterScanReconciler uses the NamespacedName for singleton lookups.
+var _ = types.NamespacedName{}

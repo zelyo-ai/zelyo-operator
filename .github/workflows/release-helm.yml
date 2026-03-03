@@ -91,13 +91,18 @@ jobs:
         id: helm-push
         run: |
           CHART_PACKAGE=".helm-packages/aotanami-${{ steps.version.outputs.version }}.tgz"
-          helm push "${CHART_PACKAGE}" "oci://${{ env.HELM_REGISTRY }}"
+          # Push and capture the output to extract the digest
+          PUSH_OUT=$(helm push "${CHART_PACKAGE}" "oci://${{ env.HELM_REGISTRY }}" 2>&1)
+          echo "$PUSH_OUT"
+          # Extract digest (e.g. Digest: sha256:abcd...)
+          DIGEST=$(echo "$PUSH_OUT" | grep -i digest | awk '{print $2}')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       # ── Cosign keyless signing ──
       - name: Sign Helm chart OCI artifact
         run: |
           cosign sign --yes \
-            "${{ env.HELM_REGISTRY }}/aotanami:${{ steps.version.outputs.version }}"
+            "${{ env.HELM_REGISTRY }}/aotanami@${{ steps.helm-push.outputs.digest }}"
 
       # ── SBOM for the chart package ──
       - name: Generate Helm chart SBOM
@@ -110,11 +115,10 @@ jobs:
       # ── Attest SBOM ──
       - name: Attest Helm chart SBOM
         run: |
-          CHART_REF="${{ env.HELM_REGISTRY }}/aotanami:${{ steps.version.outputs.version }}"
           cosign attest --yes \
             --predicate helm-sbom-spdx.json \
             --type spdxjson \
-            "${CHART_REF}"
+            "${{ env.HELM_REGISTRY }}/aotanami@${{ steps.helm-push.outputs.digest }}"
 
       # ── Upload SBOMs as release assets ──
       - name: Upload Helm SBOMs to release

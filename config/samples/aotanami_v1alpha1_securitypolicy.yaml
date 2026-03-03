@@ -5,5 +5,19 @@ metadata:
     app.kubernetes.io/name: aotanami
     app.kubernetes.io/managed-by: kustomize
   name: securitypolicy-sample
+  namespace: aotanami-system
 spec:
-  # TODO(user): Add fields here
+  severity: medium
+  match:
+    namespaces: ["default"]
+  rules:
+    - name: non-root-containers
+      type: container-security-context
+      enforce: true
+    - name: resource-limits
+      type: resource-limits
+      enforce: true
+    - name: image-tags
+      type: image-vulnerability
+      enforce: false
+  autoRemediate: false

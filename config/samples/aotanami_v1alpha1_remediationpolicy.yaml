@@ -5,5 +5,16 @@ metadata:
     app.kubernetes.io/name: aotanami
     app.kubernetes.io/managed-by: kustomize
   name: remediationpolicy-sample
+  namespace: aotanami-system
 spec:
-  # TODO(user): Add fields here
+  targetPolicies: ["securitypolicy-sample"]
+  gitOpsRepository: gitopsrepository-sample
+  prTemplate:
+    titlePrefix: "[Aotanami]"
+    labels: ["security", "auto-fix"]
+    assignees: ["team-lead"]
+    branchPrefix: "aotanami/fix-"
+  dryRun: false
+  maxConcurrentPRs: 5
+  autoMerge: false
+  severityFilter: high

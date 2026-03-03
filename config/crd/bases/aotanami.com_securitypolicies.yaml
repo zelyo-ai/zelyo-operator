@@ -262,6 +262,11 @@ spec:
                 description: lastEvaluated is the timestamp of the last policy evaluation.
                 format: date-time
                 type: string
+              observedGeneration:
+                description: observedGeneration is the most recent generation observed
+                  by the controller.
+                format: int64
+                type: integer
               phase:
                 description: phase indicates the current lifecycle phase of the policy.
                 enum:

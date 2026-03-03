@@ -299,6 +299,11 @@ spec:
                   sent.
                 format: int64
                 type: integer
+              observedGeneration:
+                description: observedGeneration is the most recent generation observed
+                  by the controller.
+                format: int64
+                type: integer
               phase:
                 description: phase indicates the current channel state.
                 enum:

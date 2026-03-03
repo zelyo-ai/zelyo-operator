@@ -1,130 +1,206 @@
 # Getting Started
 
-## Prerequisites
+Welcome to Aotanami! This guide will walk you through setting up a local development environment and running your first security scan — even if you've never worked with Kubernetes operators before.
 
-- Go 1.24+
-- Docker
-- kubectl
-- [kind](https://kind.sigs.k8s.io/) (for local development)
-- [Kubebuilder](https://kubebuilder.io/) 4.x
-- Helm 3.x
+## What You'll Need
 
-## Local Development Setup
+Before starting, make sure you have these tools installed:
 
-### 1. Clone the Repository
+| Tool | Version | Why You Need It |
+|---|---|---|
+| [Go](https://go.dev/dl/) | 1.24+ | Aotanami is written in Go |
+| [Docker](https://docs.docker.com/get-docker/) | Latest | Builds container images |
+| [kubectl](https://kubernetes.io/docs/tasks/tools/) | Latest | Talks to Kubernetes clusters |
+| [kind](https://kind.sigs.k8s.io/) | Latest | Creates a local Kubernetes cluster on your laptop |
+| [Kubebuilder](https://kubebuilder.io/) | 4.x | Generates operator scaffolding |
+| [Helm](https://helm.sh/docs/intro/install/) | 3.x | Installs Aotanami into a cluster |
+
+!!! tip "Don't have kind?"
+    You can also use [minikube](https://minikube.sigs.k8s.io/) or any other local Kubernetes setup. kind is recommended because it's the fastest to start.
+
+## Step 1: Clone the Repository
 
 ```bash
 git clone https://github.com/aotanami/aotanami.git
 cd aotanami
 ```
 
-### 2. Create a Local Cluster
+## Step 2: Create a Local Cluster
 
 ```bash
 kind create cluster --name aotanami-dev
 ```
 
-### 3. Install CRDs
+This creates a single-node Kubernetes cluster running inside Docker. It takes about 30 seconds.
+
+Verify it's running:
+
+```bash
+kubectl cluster-info --context kind-aotanami-dev
+```
+
+## Step 3: Install Aotanami's CRDs
+
+CRDs (Custom Resource Definitions) teach Kubernetes about Aotanami's resource types — things like `SecurityPolicy` and `ClusterScan`.
 
 ```bash
 make install
 ```
 
-### 4. Run the Operator Locally
+Verify the CRDs are installed:
 
 ```bash
-# Set your LLM API key (optional for development)
-export AOTANAMI_LLM_API_KEY="your-openrouter-key"
+kubectl get crds | grep aotanami
+```
 
+You should see 9 CRDs listed (securitypolicies, clusterscans, scanreports, etc.).
+
+## Step 4: Run the Operator Locally
+
+```bash
 make run
 ```
 
-### 5. Apply a Sample SecurityPolicy
+This starts Aotanami on your laptop, connected to your kind cluster. You'll see log output as it starts up, including:
+
+```
+INFO    Scanner registry initialized    {"registeredScanners": ["container-security-context", "resource-limits", ...]}
+INFO    Starting Controller Manager
+```
+
+!!! note "Leave this terminal running"
+    Open a new terminal for the next steps. The operator needs to keep running to process your resources.
+
+## Step 5: Create Your First SecurityPolicy
+
+Save this as `my-first-policy.yaml`:
 
 ```yaml
-# config/samples/aotanami_v1alpha1_securitypolicy.yaml
 apiVersion: aotanami.com/v1alpha1
 kind: SecurityPolicy
 metadata:
   name: baseline-security
-  namespace: aotanami-system
+  namespace: default
 spec:
   severity: medium
   match:
     namespaces: ["default"]
   rules:
-    - name: non-root-containers
+    - name: check-security-context
       type: container-security-context
       enforce: true
-    - name: resource-limits
+    - name: check-resource-limits
       type: resource-limits
       enforce: true
-    - name: image-tags
+    - name: check-image-tags
       type: image-vulnerability
       enforce: false
 ```
 
+Apply it:
+
 ```bash
-kubectl apply -f config/samples/aotanami_v1alpha1_securitypolicy.yaml
+kubectl apply -f my-first-policy.yaml
 ```
 
-### 6. Check Status
+## Step 6: Deploy a Test Workload
+
+Let's deploy a deliberately insecure pod so Aotanami has something to find:
 
 ```bash
-# View the policy status
-kubectl get securitypolicies -A
-
-# Check operator logs
-kubectl logs -f deploy/aotanami-controller-manager -n aotanami-system
-
-# View scan reports
-kubectl get scanreports -A
+kubectl run insecure-nginx --image=nginx:latest --restart=Never
 ```
 
-## Deploying to a Cluster
+This pod has several security issues:
 
-### Via Helm (OCI)
+- Uses the `:latest` tag (not pinned)
+- No resource limits set
+- No security context configured (runs as root)
+
+## Step 7: Check What Aotanami Found
+
+Wait a few seconds, then check the SecurityPolicy status:
 
 ```bash
-# Create namespace
+kubectl get securitypolicies
+```
+
+You should see something like:
+
+```
+NAME                SEVERITY   VIOLATIONS   PHASE    AGE
+baseline-security   medium     5            Active   30s
+```
+
+For detailed findings, describe the policy:
+
+```bash
+kubectl describe securitypolicy baseline-security
+```
+
+Look at the `Status` section — you'll see:
+
+- **Phase**: `Active` (the policy is working)
+- **ViolationCount**: Number of findings
+- **Conditions**: Detailed status like `ScanCompleted=True`
+- **Events**: Recent scan results
+
+## Step 8: Clean Up
+
+```bash
+# Delete the test pod
+kubectl delete pod insecure-nginx
+
+# Delete the policy
+kubectl delete securitypolicy baseline-security
+
+# Delete the kind cluster (when you're done)
+kind delete cluster --name aotanami-dev
+```
+
+## Deploying to a Real Cluster
+
+### Via Helm (Recommended)
+
+```bash
+# 1. Create the namespace
 kubectl create namespace aotanami-system
 
-# Create LLM API key secret
+# 2. Create your LLM API key secret
 kubectl create secret generic aotanami-llm \
   --namespace aotanami-system \
-  --from-literal=api-key=<YOUR_API_KEY>
+  --from-literal=api-key=<YOUR_OPENROUTER_API_KEY>
 
-# Install from OCI registry
+# 3. Install Aotanami
 helm install aotanami oci://ghcr.io/zelyo-ai/charts/aotanami \
   --namespace aotanami-system \
   --set config.llm.provider=openrouter \
   --set config.llm.model=anthropic/claude-sonnet-4-20250514 \
   --set config.llm.apiKeySecret=aotanami-llm
+
+# 4. Verify
+kubectl get pods -n aotanami-system
 ```
 
-### Enabling Protect Mode
+### Verify Image Signature
 
-To enable autonomous PR-based remediation, onboard a GitOps repository:
+Before deploying to production, verify that the image hasn't been tampered with:
 
-```yaml
-apiVersion: aotanami.com/v1alpha1
-kind: GitOpsRepository
-metadata:
-  name: my-infra
-  namespace: aotanami-system
-spec:
-  url: https://github.com/my-org/k8s-manifests
-  branch: main
-  paths:
-    - "clusters/production/"
-  provider: github
-  authSecret: github-credentials
-  enableDriftDetection: true
+```bash
+cosign verify ghcr.io/aotanami/aotanami:<tag> \
+  --certificate-identity-regexp='.*' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
 ```
 
-## Next Steps
+## What's Next?
 
-- [Architecture](architecture.md) — understand the system design
-- [CRD Reference](crd-reference.md) — explore all CRD fields
-- [LLM Configuration](llm-configuration.md) — set up your LLM provider
-- [Integrations](integrations.md) — configure notifications
+Now that you've got Aotanami running, explore these guides:
+
+| Guide | What You'll Learn |
+|---|---|
+| [Quick Start](quickstart.md) | Common recipes for security scanning |
+| [CRD Reference](crd-reference.md) | Every field in every CRD explained |
+| [Architecture](architecture.md) | How the operator works under the hood |
+| [Security Scanners](scanners.md) | What each scanner checks and how to configure it |
+| [Monitoring & Metrics](metrics.md) | Prometheus integration and alerting |
+| [GitOps Onboarding](gitops-onboarding.md) | Enable Protect Mode with automated PR fixes |

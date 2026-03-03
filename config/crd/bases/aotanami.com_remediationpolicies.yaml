@@ -187,6 +187,11 @@ spec:
                 description: lastRun is the timestamp of the last remediation cycle.
                 format: date-time
                 type: string
+              observedGeneration:
+                description: observedGeneration is the most recent generation observed
+                  by the controller.
+                format: int64
+                type: integer
               openPRs:
                 description: openPRs is the count of currently open PRs.
                 format: int32

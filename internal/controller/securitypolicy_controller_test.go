@@ -23,22 +23,24 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aotanamiv1alpha1 "github.com/aotanami/aotanami/api/v1alpha1"
+	"github.com/aotanami/aotanami/internal/scanner"
 )
 
 var _ = Describe("SecurityPolicy Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "test-policy"
 
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
 		securitypolicy := &aotanamiv1alpha1.SecurityPolicy{}
 
@@ -69,7 +71,6 @@ var _ = Describe("SecurityPolicy Controller", func() {
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &aotanamiv1alpha1.SecurityPolicy{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
@@ -77,19 +78,29 @@ var _ = Describe("SecurityPolicy Controller", func() {
 			By("Cleanup the specific resource instance SecurityPolicy")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &SecurityPolicyReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:          k8sClient,
+				Scheme:          k8sClient.Scheme(),
+				Recorder:        record.NewFakeRecorder(10),
+				ScannerRegistry: scanner.DefaultRegistry(),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			// Verify status was updated.
+			policy := &aotanamiv1alpha1.SecurityPolicy{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, policy)).To(Succeed())
+
+			// Should be Active after successful reconciliation.
+			Expect(policy.Status.Phase).To(Equal(aotanamiv1alpha1.PhaseActive))
+			Expect(policy.Status.ObservedGeneration).To(Equal(policy.Generation))
+			Expect(policy.Status.LastEvaluated).NotTo(BeNil())
 		})
 	})
 })
