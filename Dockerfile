@@ -45,12 +45,6 @@ LABEL org.opencontainers.image.documentation="https://github.com/aotanami/aotana
 # Copy CA certificates for TLS (Aotanami makes HTTPS calls to LLM APIs)
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-# Copy timezone data for time.LoadLocation
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
-
-# Copy passwd for numeric USER to have a name
-COPY --from=builder /etc/passwd /etc/passwd
-
 # Copy the statically-linked binary
 WORKDIR /
 COPY --from=builder /workspace/manager .
