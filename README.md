@@ -215,13 +215,15 @@ make docker-push IMG=ghcr.io/aotanami/aotanami:dev
 
 | Document | Description |
 |---|---|
-| [Architecture](docs/architecture.md) | System design, data flow, and component interactions |
-| [Getting Started](docs/getting-started.md) | Local development setup and first policy walkthrough |
-| [CRD Reference](docs/crd-reference.md) | Complete Custom Resource Definition field reference |
-| [API Reference](docs/api-reference.md) | REST API documentation (OpenAPI) |
-| [GitOps Onboarding](docs/gitops-onboarding.md) | How to connect your existing GitOps repositories |
-| [Integrations](docs/integrations.md) | Notification channel setup guides |
+| [Getting Started](docs/getting-started.md) | Step-by-step setup: clone, cluster, first policy, first scan |
+| [Quick Start Recipes](docs/quickstart.md) | Copy-paste YAML recipes for common use cases |
+| [Architecture](docs/architecture.md) | System design, controllers, scanner engine, data flow |
+| [Security Scanners](docs/scanners.md) | All 8 scanners: what they check, severity levels, example policies |
+| [CRD Reference](docs/crd-reference.md) | Complete field reference for all 9 CRDs (spec + status) |
+| [Monitoring & Metrics](docs/metrics.md) | Prometheus metrics, PromQL queries, Grafana dashboards, alerting rules |
 | [LLM Configuration](docs/llm-configuration.md) | Provider setup, token budgets, and cost optimization |
+| [GitOps Onboarding](docs/gitops-onboarding.md) | How to connect your GitOps repositories for auto-remediation |
+| [Integrations](docs/integrations.md) | Notification channel setup guides (Slack, Teams, PagerDuty, etc.) |
 | [Compliance](docs/compliance.md) | Supported frameworks and custom rule authoring |
 | [Supply Chain Security](docs/supply-chain-security.md) | Verifying image signatures, SBOMs, and provenance |
 

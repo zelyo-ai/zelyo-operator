@@ -5,5 +5,15 @@ metadata:
     app.kubernetes.io/name: aotanami
     app.kubernetes.io/managed-by: kustomize
   name: costpolicy-sample
+  namespace: aotanami-system
 spec:
-  # TODO(user): Add fields here
+  targetNamespaces: ["default"]
+  resizeStrategy: conservative
+  budgetLimits:
+    monthlyBudgetUSD: "5000"
+    costIncreaseThresholdPercent: 20
+  idleDetection:
+    enabled: true
+    cpuThresholdPercent: 5
+    memoryThresholdPercent: 5
+    idleDurationMinutes: 60

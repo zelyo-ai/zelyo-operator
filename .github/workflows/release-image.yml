@@ -163,6 +163,9 @@ jobs:
           fail-build: true
           severity-cutoff: critical
           output-format: sarif
+          # Only fail on vulnerabilities that have a known fix available.
+          # We use distroless/scratch, so any findings are in Go dependencies.
+          only-fixed: true
 
       - name: Upload SARIF to GitHub Security
         if: always()

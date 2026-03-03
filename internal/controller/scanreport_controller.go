@@ -18,38 +18,61 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	aotanamiv1alpha1 "github.com/aotanami/aotanami/api/v1alpha1"
+	"github.com/aotanami/aotanami/internal/conditions"
 )
 
-// ScanReportReconciler reconciles a ScanReport object
+// ScanReportReconciler reconciles a ScanReport object.
+// ScanReports are primarily created by the ClusterScan controller.
+// This controller manages their lifecycle and ensures proper status tracking.
 type ScanReportReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=aotanami.com,resources=scanreports,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=aotanami.com,resources=scanreports/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=aotanami.com,resources=scanreports/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ScanReport object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/reconcile
+// Reconcile manages ScanReport lifecycle.
 func (r *ScanReportReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	log := logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	report := &aotanamiv1alpha1.ScanReport{}
+	if err := r.Get(ctx, req.NamespacedName, report); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("fetching ScanReport: %w", err)
+	}
+
+	log.Info("Reconciling ScanReport",
+		"name", report.Name,
+		"scanRef", report.Spec.ScanRef,
+		"findings", report.Spec.Summary.TotalFindings)
+
+	// Ensure status reflects the report content.
+	if report.Status.Phase == "" {
+		report.Status.Phase = aotanamiv1alpha1.PhaseComplete
+		conditions.MarkTrue(&report.Status.Conditions, aotanamiv1alpha1.ConditionReady,
+			aotanamiv1alpha1.ReasonReconcileSuccess,
+			fmt.Sprintf("Report contains %d findings", report.Spec.Summary.TotalFindings),
+			report.Generation)
+
+		if err := r.Status().Update(ctx, report); err != nil {
+			return ctrl.Result{}, fmt.Errorf("updating ScanReport status: %w", err)
+		}
+	}
 
 	return ctrl.Result{}, nil
 }

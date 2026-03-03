@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,13 +33,12 @@ import (
 
 var _ = Describe("AotanamiConfig Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "test-config"
 
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Name: resourceName,
 		}
 		aotanamiconfig := &aotanamiv1alpha1.AotanamiConfig{}
 
@@ -48,8 +48,7 @@ var _ = Describe("AotanamiConfig Controller", func() {
 			if err != nil && errors.IsNotFound(err) {
 				resource := &aotanamiv1alpha1.AotanamiConfig{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
+						Name: resourceName,
 					},
 					Spec: aotanamiv1alpha1.AotanamiConfigSpec{
 						LLM: aotanamiv1alpha1.LLMConfig{
@@ -64,7 +63,6 @@ var _ = Describe("AotanamiConfig Controller", func() {
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &aotanamiv1alpha1.AotanamiConfig{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
@@ -72,19 +70,27 @@ var _ = Describe("AotanamiConfig Controller", func() {
 			By("Cleanup the specific resource instance AotanamiConfig")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &AotanamiConfigReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: record.NewFakeRecorder(10),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			// Verify status was updated.
+			config := &aotanamiv1alpha1.AotanamiConfig{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, config)).To(Succeed())
+
+			// Phase should be Degraded since the LLM secret doesn't exist in the test env.
+			Expect(config.Status.Phase).To(Equal(aotanamiv1alpha1.PhaseDegraded))
+			Expect(config.Status.ObservedGeneration).To(Equal(config.Generation))
 		})
 	})
 })

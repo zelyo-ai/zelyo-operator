@@ -181,6 +181,11 @@ spec:
                 description: lastScheduleTime is when the scan was last triggered.
                 format: date-time
                 type: string
+              observedGeneration:
+                description: observedGeneration is the most recent generation observed
+                  by the controller.
+                format: int64
+                type: integer
               phase:
                 description: phase indicates the current scan lifecycle.
                 enum:

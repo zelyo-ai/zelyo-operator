@@ -192,6 +192,10 @@ type TelemetryConfig struct {
 
 // AotanamiConfigStatus defines the observed state of AotanamiConfig.
 type AotanamiConfigStatus struct {
+	// observedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// phase indicates the current agent lifecycle phase.
 	// +kubebuilder:validation:Enum=Initializing;Active;Degraded;Error
 	// +optional

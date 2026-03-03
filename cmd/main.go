@@ -37,6 +37,9 @@ import (
 
 	aotanamiv1alpha1 "github.com/aotanami/aotanami/api/v1alpha1"
 	"github.com/aotanami/aotanami/internal/controller"
+	_ "github.com/aotanami/aotanami/internal/metrics" // Auto-register custom Prometheus metrics.
+	"github.com/aotanami/aotanami/internal/scanner"
+	"github.com/aotanami/aotanami/internal/version"
 	webhookv1alpha1 "github.com/aotanami/aotanami/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
@@ -87,6 +90,12 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Log version information on startup.
+	setupLog.Info("Starting Aotanami operator",
+		"version", version.Version,
+		"commit", version.Commit,
+		"buildDate", version.Date)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -141,11 +150,6 @@ func main() {
 	// If the certificate is not specified, controller-runtime will automatically
 	// generate self-signed certificates for the metrics server. While convenient for development and testing,
 	// this setup is not recommended for production.
-	//
-	// TODO(user): If you enable certManager, uncomment the following lines:
-	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
-	// managed by cert-manager for the metrics server.
-	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
 	if len(metricsCertPath) > 0 {
 		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
 			"metrics-cert-path", metricsCertPath, "metrics-cert-name", metricsCertName, "metrics-cert-key", metricsCertKey)
@@ -161,7 +165,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "ffb648c3.zelyo.ai",
+		LeaderElectionID:       "aotanami.com",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -179,65 +183,80 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize the scanner registry with all built-in scanners.
+	scannerRegistry := scanner.DefaultRegistry()
+	setupLog.Info("Scanner registry initialized", "registeredScanners", scannerRegistry.List())
+
 	if err := (&controller.SecurityPolicyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("securitypolicy-controller"),
+		ScannerRegistry: scannerRegistry,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "SecurityPolicy")
 		os.Exit(1)
 	}
 	if err := (&controller.RemediationPolicyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("remediationpolicy-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "RemediationPolicy")
 		os.Exit(1)
 	}
 	if err := (&controller.ClusterScanReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("clusterscan-controller"),
+		ScannerRegistry: scannerRegistry,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ClusterScan")
 		os.Exit(1)
 	}
 	if err := (&controller.ScanReportReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("scanreport-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ScanReport")
 		os.Exit(1)
 	}
 	if err := (&controller.CostPolicyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("costpolicy-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "CostPolicy")
 		os.Exit(1)
 	}
 	if err := (&controller.MonitoringPolicyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("monitoringpolicy-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "MonitoringPolicy")
 		os.Exit(1)
 	}
 	if err := (&controller.NotificationChannelReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("notificationchannel-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "NotificationChannel")
 		os.Exit(1)
 	}
 	if err := (&controller.AotanamiConfigReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("aotanamiconfig-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "AotanamiConfig")
 		os.Exit(1)
 	}
 	if err := (&controller.GitOpsRepositoryReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("gitopsrepository-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "GitOpsRepository")
 		os.Exit(1)

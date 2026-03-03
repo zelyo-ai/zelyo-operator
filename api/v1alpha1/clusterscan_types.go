@@ -88,6 +88,10 @@ type ClusterScanStatus struct {
 	// +optional
 	LastReportName string `json:"lastReportName,omitempty"`
 
+	// observedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// conditions represent the current state of the resource.
 	// +listType=map
 	// +listMapKey=type

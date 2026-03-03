@@ -5,5 +5,16 @@ metadata:
     app.kubernetes.io/name: aotanami
     app.kubernetes.io/managed-by: kustomize
   name: gitopsrepository-sample
+  namespace: aotanami-system
 spec:
-  # TODO(user): Add fields here
+  url: https://github.com/my-org/k8s-manifests
+  branch: main
+  paths: ["clusters/production/", "clusters/staging/"]
+  provider: github
+  authSecret: github-creds
+  syncStrategy: poll
+  pollIntervalSeconds: 300
+  enableDriftDetection: true
+  namespaceMapping:
+    - repoPath: "clusters/production/"
+      namespace: production

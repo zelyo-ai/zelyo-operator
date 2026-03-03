@@ -96,6 +96,10 @@ type SecurityRule struct {
 
 // SecurityPolicyStatus defines the observed state of SecurityPolicy.
 type SecurityPolicyStatus struct {
+	// observedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// phase indicates the current lifecycle phase of the policy.
 	// +kubebuilder:validation:Enum=Pending;Active;Error
 	// +optional

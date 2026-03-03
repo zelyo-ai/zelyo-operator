@@ -18,7 +18,10 @@ package v1alpha1
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -37,64 +40,160 @@ func SetupSecurityPolicyWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 // +kubebuilder:webhook:path=/mutate-aotanami-zelyo-ai-v1alpha1-securitypolicy,mutating=true,failurePolicy=fail,sideEffects=None,groups=aotanami.com,resources=securitypolicies,verbs=create;update,versions=v1alpha1,name=msecuritypolicy-v1alpha1.kb.io,admissionReviewVersions=v1
 
-// SecurityPolicyCustomDefaulter struct is responsible for setting default values on the custom resource of the
-// Kind SecurityPolicy when those are created or updated.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as it is used only for temporary operations and does not need to be deeply copied.
-type SecurityPolicyCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
-}
+// SecurityPolicyCustomDefaulter sets default values on SecurityPolicy resources
+// when they are created or updated.
+type SecurityPolicyCustomDefaulter struct{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind SecurityPolicy.
+// Default implements webhook.CustomDefaulter.
 func (d *SecurityPolicyCustomDefaulter) Default(_ context.Context, obj *aotanamiv1alpha1.SecurityPolicy) error {
 	securitypolicylog.Info("Defaulting for SecurityPolicy", "name", obj.GetName())
 
-	// TODO(user): fill in your defaulting logic.
+	// Default severity to "medium" if not set.
+	if obj.Spec.Severity == "" {
+		obj.Spec.Severity = aotanamiv1alpha1.SeverityMedium
+	}
+
+	// Default each rule's enforce field to true.
+	for i := range obj.Spec.Rules {
+		// Enforce defaults to true — only need to set if the struct was zero-valued.
+		// Since bool zero = false, we check if this is a new rule that hasn't been
+		// explicitly set. The kubebuilder default handles this in CRD schema,
+		// but we also enforce it here for programmatic creates.
+		if !obj.Spec.Rules[i].Enforce {
+			obj.Spec.Rules[i].Enforce = true
+		}
+	}
 
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: If you want to customise the 'path', use the flags '--defaulting-path' or '--validation-path'.
+// validRuleTypes is the set of accepted security rule types.
+var validRuleTypes = map[string]bool{
+	aotanamiv1alpha1.RuleTypeContainerSecurityContext: true,
+	aotanamiv1alpha1.RuleTypeRBACAudit:                true,
+	aotanamiv1alpha1.RuleTypeImageVulnerability:       true,
+	aotanamiv1alpha1.RuleTypeNetworkPolicy:            true,
+	aotanamiv1alpha1.RuleTypePodSecurity:              true,
+	aotanamiv1alpha1.RuleTypeSecretsExposure:          true,
+	aotanamiv1alpha1.RuleTypeResourceLimits:           true,
+	aotanamiv1alpha1.RuleTypePrivilegeEscalation:      true,
+}
+
+// validSeverities is the set of accepted severity levels.
+var validSeverities = map[string]bool{
+	aotanamiv1alpha1.SeverityCritical: true,
+	aotanamiv1alpha1.SeverityHigh:     true,
+	aotanamiv1alpha1.SeverityMedium:   true,
+	aotanamiv1alpha1.SeverityLow:      true,
+	aotanamiv1alpha1.SeverityInfo:     true,
+}
+
 // +kubebuilder:webhook:path=/validate-aotanami-zelyo-ai-v1alpha1-securitypolicy,mutating=false,failurePolicy=fail,sideEffects=None,groups=aotanami.com,resources=securitypolicies,verbs=create;update,versions=v1alpha1,name=vsecuritypolicy-v1alpha1.kb.io,admissionReviewVersions=v1
 
-// SecurityPolicyCustomValidator struct is responsible for validating the SecurityPolicy resource
-// when it is created, updated, or deleted.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as this struct is used only for temporary operations and does not need to be deeply copied.
-type SecurityPolicyCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
-}
+// SecurityPolicyCustomValidator validates SecurityPolicy resources
+// when they are created, updated, or deleted.
+type SecurityPolicyCustomValidator struct{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type SecurityPolicy.
+// ValidateCreate implements webhook.CustomValidator.
 func (v *SecurityPolicyCustomValidator) ValidateCreate(_ context.Context, obj *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
 	securitypolicylog.Info("Validation for SecurityPolicy upon creation", "name", obj.GetName())
-
-	// TODO(user): fill in your validation logic upon object creation.
-
-	return nil, nil
+	return v.validate(obj)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type SecurityPolicy.
-func (v *SecurityPolicyCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.CustomValidator.
+func (v *SecurityPolicyCustomValidator) ValidateUpdate(_ context.Context, _, newObj *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
 	securitypolicylog.Info("Validation for SecurityPolicy upon update", "name", newObj.GetName())
+	return v.validate(newObj)
+}
 
-	// TODO(user): fill in your validation logic upon object update.
-
+// ValidateDelete implements webhook.CustomValidator.
+func (v *SecurityPolicyCustomValidator) ValidateDelete(_ context.Context, _ *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
+	// No validation needed on delete.
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type SecurityPolicy.
-func (v *SecurityPolicyCustomValidator) ValidateDelete(_ context.Context, obj *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
-	securitypolicylog.Info("Validation for SecurityPolicy upon deletion", "name", obj.GetName())
+// validate performs the common validation logic for create and update.
+func (v *SecurityPolicyCustomValidator) validate(obj *aotanamiv1alpha1.SecurityPolicy) (admission.Warnings, error) {
+	var allErrs field.ErrorList
+	var warnings admission.Warnings
+	specPath := field.NewPath("spec")
 
-	// TODO(user): fill in your validation logic upon object deletion.
+	// Validate severity.
+	if obj.Spec.Severity != "" && !validSeverities[obj.Spec.Severity] {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("severity"),
+			obj.Spec.Severity,
+			fmt.Sprintf("must be one of: %s", strings.Join(sortedKeys(validSeverities), ", ")),
+		))
+	}
 
-	return nil, nil
+	// Validate rules — at least one required.
+	rulesPath := specPath.Child("rules")
+	if len(obj.Spec.Rules) == 0 {
+		allErrs = append(allErrs, field.Required(rulesPath, "at least one rule is required"))
+	}
+
+	// Validate each rule.
+	ruleNames := make(map[string]bool, len(obj.Spec.Rules))
+	for i, rule := range obj.Spec.Rules {
+		rulePath := rulesPath.Index(i)
+
+		// Rule name must be unique.
+		if rule.Name == "" {
+			allErrs = append(allErrs, field.Required(rulePath.Child("name"), "rule name is required"))
+		} else if ruleNames[rule.Name] {
+			allErrs = append(allErrs, field.Duplicate(rulePath.Child("name"), rule.Name))
+		}
+		ruleNames[rule.Name] = true
+
+		// Rule type must be valid.
+		if !validRuleTypes[rule.Type] {
+			allErrs = append(allErrs, field.Invalid(
+				rulePath.Child("type"),
+				rule.Type,
+				fmt.Sprintf("must be one of: %s", strings.Join(sortedKeys(validRuleTypes), ", ")),
+			))
+		}
+	}
+
+	// Validate schedule (basic cron format check).
+	if obj.Spec.Schedule != "" {
+		parts := strings.Fields(obj.Spec.Schedule)
+		if len(parts) != 5 {
+			allErrs = append(allErrs, field.Invalid(
+				specPath.Child("schedule"),
+				obj.Spec.Schedule,
+				"must be a valid cron expression with 5 fields (minute hour day month weekday)",
+			))
+		}
+	}
+
+	// Warn if autoRemediate is set (feature not yet available).
+	if obj.Spec.AutoRemediate {
+		warnings = append(warnings, "autoRemediate is enabled but auto-remediation requires a GitOpsRepository to be onboarded")
+	}
+
+	if len(allErrs) > 0 {
+		return warnings, allErrs.ToAggregate()
+	}
+	return warnings, nil
+}
+
+// sortedKeys returns the sorted keys of a map for deterministic error messages.
+func sortedKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	// Sort for deterministic output.
+	for i := 0; i < len(keys); i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if keys[i] > keys[j] {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+	return keys
 }

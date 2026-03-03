@@ -114,10 +114,12 @@ nav:
   - Home: index.md
   - Getting Started:
       - Installation: getting-started.md
-      - Quick Start: quickstart.md
+      - Quick Start Recipes: quickstart.md
   - User Guide:
       - Architecture: architecture.md
+      - Security Scanners: scanners.md
       - CRD Reference: crd-reference.md
+      - Monitoring & Metrics: metrics.md
       - LLM Configuration: llm-configuration.md
       - GitOps Onboarding: gitops-onboarding.md
       - Compliance Frameworks: compliance.md
@@ -130,3 +132,4 @@ nav:
   - Community:
       - Contributing: contributing.md
       - Code of Conduct: code-of-conduct.md
+
