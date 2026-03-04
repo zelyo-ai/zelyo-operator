@@ -12,7 +12,7 @@ The Aotanami team takes security vulnerabilities seriously. We appreciate your e
 
 ### How to Report
 
-Send an email to **[security@zelyo.ai](mailto:security@zelyo.ai)** with the following details:
+Send an email to **[security@aotanami.com](mailto:security@aotanami.com)** with the following details:
 
 - **Description** of the vulnerability
 - **Steps to reproduce** (proof of concept if possible)

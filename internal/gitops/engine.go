@@ -1,5 +1,5 @@
 /*
-Copyright 2026 Zelyo AI.
+Copyright 2026 The Aotanami Authors. Originally created by Zelyo AI.
 */
 
 // Package gitops provides Git repository operations for Aotanami's auto-remediation

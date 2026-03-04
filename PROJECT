@@ -3,7 +3,7 @@
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
 cliVersion: 4.13.0
-domain: zelyo.ai
+domain: aotanami.com
 layout:
 - go.kubebuilder.io/v4
 projectName: aotanami
@@ -13,7 +13,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: SecurityPolicy
   path: github.com/aotanami/aotanami/api/v1alpha1
@@ -26,7 +26,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: RemediationPolicy
   path: github.com/aotanami/aotanami/api/v1alpha1
@@ -35,7 +35,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: ClusterScan
   path: github.com/aotanami/aotanami/api/v1alpha1
@@ -44,7 +44,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: ScanReport
   path: github.com/aotanami/aotanami/api/v1alpha1
@@ -53,7 +53,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: CostPolicy
   path: github.com/aotanami/aotanami/api/v1alpha1
@@ -62,7 +62,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: MonitoringPolicy
   path: github.com/aotanami/aotanami/api/v1alpha1
@@ -71,7 +71,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: NotificationChannel
   path: github.com/aotanami/aotanami/api/v1alpha1
@@ -80,7 +80,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: AotanamiConfig
   path: github.com/aotanami/aotanami/api/v1alpha1
@@ -89,7 +89,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: zelyo.ai
+  domain: aotanami.com
   group: aotanami
   kind: GitOpsRepository
   path: github.com/aotanami/aotanami/api/v1alpha1
