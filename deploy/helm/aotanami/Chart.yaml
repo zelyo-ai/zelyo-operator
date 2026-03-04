@@ -10,9 +10,9 @@ icon: https://raw.githubusercontent.com/aotanami/aotanami/main/docs/assets/icon.
 sources:
   - https://github.com/aotanami/aotanami
 maintainers:
-  - name: Zelyo AI
-    email: engineering@zelyo.ai
-    url: https://zelyo.ai
+  - name: The Aotanami Authors
+    email: engineering@aotanami.com
+    url: https://aotanami.com
 keywords:
   - kubernetes
   - security

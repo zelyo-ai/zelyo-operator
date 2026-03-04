@@ -1,5 +1,5 @@
 /*
-Copyright 2026 Zelyo AI.
+Copyright 2026 The Aotanami Authors. Originally created by Zelyo AI.
 */
 
 // Package remediation provides the auto-fix engine that generates Kubernetes

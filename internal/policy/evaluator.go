@@ -1,5 +1,5 @@
 /*
-Copyright 2026 Zelyo AI.
+Copyright 2026 The Aotanami Authors. Originally created by Zelyo AI.
 */
 
 // Package policy provides policy evaluation logic for Aotanami. It handles the

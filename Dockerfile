@@ -38,7 +38,7 @@ LABEL org.opencontainers.image.title="Aotanami"
 LABEL org.opencontainers.image.description="Autonomous Kubernetes Protection — Powered by Agentic AI"
 LABEL org.opencontainers.image.url="https://github.com/aotanami/aotanami"
 LABEL org.opencontainers.image.source="https://github.com/aotanami/aotanami"
-LABEL org.opencontainers.image.vendor="Zelyo AI"
+LABEL org.opencontainers.image.vendor="Aotanami Foundation"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 LABEL org.opencontainers.image.documentation="https://github.com/aotanami/aotanami/tree/main/docs"
 

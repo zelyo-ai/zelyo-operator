@@ -190,5 +190,5 @@ graph TB
 ---
 
 <p align="center" style="margin-top: 3rem; color: var(--md-default-fg-color--lighter);">
-  Built with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
+  An Aotanami Foundation project. Originally created with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
 </p>

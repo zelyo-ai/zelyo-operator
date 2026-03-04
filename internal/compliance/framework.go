@@ -1,5 +1,5 @@
 /*
-Copyright 2026 Zelyo AI.
+Copyright 2026 The Aotanami Authors. Originally created by Zelyo AI.
 */
 
 // Package compliance provides compliance framework evaluation for Kubernetes

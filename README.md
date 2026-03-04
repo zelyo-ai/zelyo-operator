@@ -12,7 +12,7 @@
   <a href="https://github.com/aotanami/aotanami/releases"><img src="https://img.shields.io/github/v/release/aotanami/aotanami?style=flat-square" alt="Release" /></a>
   <a href="https://goreportcard.com/report/github.com/aotanami/aotanami"><img src="https://goreportcard.com/badge/github.com/aotanami/aotanami" alt="Go Report Card" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="License" /></a>
-  <a href="https://artifacthub.io/packages/helm/aotanami/aotanami"><img src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/zelyo-ai&style=flat-square" alt="Artifact Hub" /></a>
+  <a href="https://artifacthub.io/packages/helm/aotanami/aotanami"><img src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/aotanami&style=flat-square" alt="Artifact Hub" /></a>
 </p>
 
 ---
@@ -248,5 +248,5 @@ Aotanami is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <p align="center">
-  Built with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
+  An Aotanami Foundation project. Originally created with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
 </p>
