@@ -98,7 +98,7 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	// Log version information on startup.
-	setupLog.Info("Starting Zelyo Operator operator",
+	setupLog.Info("Starting Zelyo Operator",
 		"version", version.Version,
 		"commit", version.Commit,
 		"buildDate", version.Date)

@@ -32,7 +32,7 @@ spec:
       openAPIV3Schema:
         description: |-
           ZelyoConfig is the Schema for the zelyoconfigs API.
-          It is the global configuration resource for the Zelyo Operator operator.
+          It is the global configuration resource for the Zelyo Operator.
         properties:
           apiVersion:
             description: |-
@@ -54,7 +54,7 @@ spec:
           spec:
             description: |-
               ZelyoConfigSpec defines the desired state of ZelyoConfig.
-              ZelyoConfig is the global configuration resource for the Zelyo Operator operator.
+              ZelyoConfig is the global configuration resource for the Zelyo Operator.
               Only one ZelyoConfig resource should exist per cluster.
             properties:
               dashboard:

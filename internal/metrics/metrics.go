@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package metrics exposes custom Prometheus metrics for the Zelyo Operator operator.
+// Package metrics exposes custom Prometheus metrics for the Zelyo Operator.
 // These metrics follow the conventions established by kube-state-metrics and
 // the Kubernetes Instrumentation SIG.
 //

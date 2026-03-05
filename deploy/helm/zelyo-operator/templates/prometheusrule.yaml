@@ -53,6 +53,6 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Zelyo Operator operator is restarting frequently"
+            summary: "Zelyo Operator is restarting frequently"
             description: 'The operator has restarted {{ "{{" }} $value {{ "}}" }} times in the last hour.'
 {{- end }}

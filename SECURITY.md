@@ -28,7 +28,7 @@ Send an email to **[security@zelyo.ai](mailto:security@zelyo.ai)** with the foll
 
 The following are in scope:
 
-- Zelyo Operator operator binary and container images
+- Zelyo Operator binary and container images
 - Helm chart and Kubernetes manifests
 - Dashboard and REST API
 - CRD validation and webhook logic

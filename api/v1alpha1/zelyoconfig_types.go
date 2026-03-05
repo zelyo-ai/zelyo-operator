@@ -21,7 +21,7 @@ import (
 )
 
 // ZelyoConfigSpec defines the desired state of ZelyoConfig.
-// ZelyoConfig is the global configuration resource for the Zelyo Operator operator.
+// ZelyoConfig is the global configuration resource for the Zelyo Operator.
 // Only one ZelyoConfig resource should exist per cluster.
 type ZelyoConfigSpec struct {
 	// mode sets the default operating mode for the operator.
@@ -244,7 +244,7 @@ type TokenUsageStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ZelyoConfig is the Schema for the zelyoconfigs API.
-// It is the global configuration resource for the Zelyo Operator operator.
+// It is the global configuration resource for the Zelyo Operator.
 type ZelyoConfig struct {
 	metav1.TypeMeta `json:",inline"`
 
