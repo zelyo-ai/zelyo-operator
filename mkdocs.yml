@@ -117,6 +117,7 @@ nav:
       - Quick Start Recipes: quickstart.md
   - User Guide:
       - Architecture: architecture.md
+      - Troubleshooting: troubleshooting.md
       - Security Scanners: scanners.md
       - CRD Reference: crd-reference.md
       - Monitoring & Metrics: metrics.md
