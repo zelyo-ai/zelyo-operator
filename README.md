@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Zelyo Operator" width="200" />
+  <img src="assets/logo.png" alt="Zelyo" width="200" />
 </p>
 
 <h1 align="center">Zelyo</h1>
