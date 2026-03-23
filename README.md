@@ -365,5 +365,5 @@ Zelyo Operator is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <p align="center">
-  An Zelyo AI project. Originally created with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
+Created with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
 </p>
