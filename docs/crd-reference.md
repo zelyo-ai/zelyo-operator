@@ -294,7 +294,7 @@ spec:
     titlePrefix: "[Zelyo Operator]"
     labels: ["security", "auto-fix"]
     assignees: ["team-lead"]
-    branchPrefix: "Zelyo/fix-"
+    branchPrefix: "zelyo-operator/fix-"
   dryRun: false
   maxConcurrentPRs: 5
   autoMerge: false
@@ -421,7 +421,7 @@ spec:
     maxPerHour: 60
     aggregateSeconds: 30
   slack:
-    channel: "#Zelyo-alerts"
+    channel: "#zelyo-operator-alerts"
 ```
 
 ### Status

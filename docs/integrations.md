@@ -106,9 +106,9 @@ spec:
   type: webhook
   credentialSecret: webhook-auth    # Optional
   webhook:
-    url: https://api.example.com/Zelyo-alerts
+    url: https://api.example.com/zelyo-operator-alerts
     headers:
-      X-Source: Zelyo
+      X-Source: zelyo-operator
 ```
 
 ## Email
@@ -125,7 +125,7 @@ spec:
     recipients: ["team@company.com", "oncall@company.com"]
     smtpHost: smtp.gmail.com
     smtpPort: 587
-    fromAddress: Zelyo@company.com
+    fromAddress: zelyo-operator@company.com
 ```
 
 ## Rate Limiting

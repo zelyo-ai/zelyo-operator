@@ -84,10 +84,10 @@ For modern features like Slack notifications and enhanced GitOps logic (which ar
 
 ```bash
 # 1. Build the local development image
-make docker-build IMG=Zelyo:local
+make docker-build IMG=zelyo-operator:local
 
 # 2. Import the image into your k3d cluster (named 'zelyo')
-k3d image import Zelyo:local -c zelyo
+k3d image import zelyo-operator:local -c zelyo
 ```
 
 > [!TIP]
@@ -128,10 +128,10 @@ kubectl get pods -n cert-manager
 ```bash
 # Install the Zelyo Operator
 # Note: we are telling it to use our 'local' image we just imported
-helm install Zelyo oci://ghcr.io/zelyo-ai/charts/Zelyo \
+helm install zelyo-operator oci://ghcr.io/zelyo-ai/charts/zelyo-operator \
   --namespace zelyo-system \
   --create-namespace \
-  --set image.repository=Zelyo \
+  --set image.repository=zelyo-operator \
   --set image.tag=local \
   --set image.pullPolicy=IfNotPresent \
   --set config.llm.provider=openrouter \
@@ -145,7 +145,7 @@ helm install Zelyo oci://ghcr.io/zelyo-ai/charts/Zelyo \
 > ```bash
 > kubectl get pods -n zelyo-system
 > # NAME                              READY   STATUS    RESTARTS   AGE
-> # Zelyo-669577fb4b-7kpg2   1/1     Running   0          30s
+> # zelyo-operator-669577fb4b-7kpg2   1/1     Running   0          30s
 > ```
 
 > [!WARNING]
@@ -810,7 +810,7 @@ kubectl get zelyoconfigs default -n zelyo-system -o jsonpath='{.status.tokenUsag
 To switch:
 
 ```bash
-helm upgrade Zelyo oci://ghcr.io/zelyo-ai/charts/Zelyo \
+helm upgrade zelyo-operator oci://ghcr.io/zelyo-ai/charts/zelyo-operator \
   --namespace zelyo-system \
   --set config.llm.provider=openai \
   --set config.llm.model=gpt-4o \
@@ -828,7 +828,7 @@ helm upgrade Zelyo oci://ghcr.io/zelyo-ai/charts/Zelyo \
 kubectl get pods -n zelyo-system
 
 # Live log stream
-kubectl logs -f deploy/Zelyo-controller-manager -n zelyo-system
+kubectl logs -f deploy/zelyo-operator-controller-manager -n zelyo-system
 
 # Events for a specific resource
 kubectl events --for securitypolicy/production-security-baseline -n zelyo-system
@@ -850,7 +850,7 @@ kubectl get securitypolicy production-security-baseline -n zelyo-system \
 Zelyo Operator includes a built-in web dashboard:
 
 ```bash
-kubectl port-forward -n zelyo-system svc/Zelyo 8080:8080
+kubectl port-forward -n zelyo-system svc/zelyo-operator 8080:8080
 # Then open http://localhost:8080
 ```
 
@@ -875,7 +875,7 @@ When you're done testing, remove everything cleanly:
 kubectl delete securitypolicies,clusterscans,scanreports,costpolicies,monitoringpolicies,notificationchannels,remediationpolicies,gitopsrepositories,zelyoconfigs --all -n zelyo-system
 
 # Uninstall the operator and cert-manager
-helm uninstall Zelyo -n zelyo-system
+helm uninstall zelyo-operator -n zelyo-system
 helm uninstall cert-manager -n cert-manager
 
 # Delete the cluster

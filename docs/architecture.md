@@ -200,7 +200,7 @@ Every resource uses **Kubernetes-standard status conditions**:
 ## Project Layout
 
 ```
-Zelyo/
+zelyo-operator/
 ├── api/v1alpha1/           # CRD type definitions (9 types + conditions)
 ├── cmd/main.go             # Entrypoint — wires controllers, brain, scanners
 ├── config/                 # Kustomize manifests (CRDs, RBAC, webhook, samples)

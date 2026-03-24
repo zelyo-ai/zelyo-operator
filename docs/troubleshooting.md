@@ -11,18 +11,18 @@ When applying a `SecurityPolicy`, you may encounter an error like this:
 #### Root Cause
 This typically happens when the path defined in the `MutatingWebhookConfiguration` or `ValidatingWebhookConfiguration` does not match the path the operator is listening on. 
 
-In some versions of the Helm chart, the paths use the domain `Zelyo-com`, while the operator uses `zelyo-ai`.
+In some versions of the Helm chart, the paths use the domain `zelyo-operator-com`, while the operator uses `zelyo-ai`.
 
 #### Solution (Manual Patch)
 Run these commands to align the configuration with the operator:
 
 ```bash
 # Patch the Mutating Webhook
-kubectl patch mutatingwebhookconfiguration Zelyo --type='json' \
+kubectl patch mutatingwebhookconfiguration zelyo-operator --type='json' \
   -p='[{"op": "replace", "path": "/webhooks/0/clientConfig/service/path", "value": "/mutate-zelyo-ai-v1alpha1-securitypolicy"}]'
 
 # Patch the Validating Webhook
-kubectl patch validatingwebhookconfiguration Zelyo --type='json' \
+kubectl patch validatingwebhookconfiguration zelyo-operator --type='json' \
   -p='[{"op": "replace", "path": "/webhooks/0/clientConfig/service/path", "value": "/validate-zelyo-ai-v1alpha1-securitypolicy"}]'
 ```
 
@@ -51,12 +51,12 @@ Look for `Insufficient cpu` or `Insufficient memory` in the Events section. Incr
 
 **Fix for local image**:
 ```bash
-k3d image import Zelyo:local -c zelyo
+k3d image import zelyo-operator:local -c zelyo
 ```
 
 **Fix for OCI:** Ensure you're using a valid tag:
 ```bash
-helm install Zelyo oci://ghcr.io/zelyo-ai/charts/Zelyo --version v0.0.1 ...
+helm install zelyo-operator oci://ghcr.io/zelyo-ai/charts/zelyo-operator --version v0.0.1 ...
 ```
 
 ---
@@ -84,7 +84,7 @@ If you don't receive Slack messages despite having a `NotificationChannel`:
 
 1.  **Check Operator Logs**: 
     ```bash
-    kubectl logs -n zelyo-system deploy/Zelyo | grep -i "Successfully sent notifications"
+    kubectl logs -n zelyo-system deploy/zelyo-operator | grep -i "Successfully sent notifications"
     ```
     *If you see this log, the operator successfully contacted Slack.*
 
@@ -97,7 +97,7 @@ If you don't receive Slack messages despite having a `NotificationChannel`:
 3.  **Check Image Version**:
     If you see scans happening but no "Successfully sent" logs, you might be running an old version from GHCR.
     ```bash
-    kubectl get deployment Zelyo -n zelyo-system -o jsonpath='{.spec.template.spec.containers[0].image}'
+    kubectl get deployment zelyo-operator -n zelyo-system -o jsonpath='{.spec.template.spec.containers[0].image}'
     ```
     *If it shows `0.0.1`, follow the **Build and Deploy the Local Operator** steps in the [End-to-End Guide](./end-to-end-guide.md).*
 
@@ -113,7 +113,7 @@ If you don't receive Slack messages despite having a `NotificationChannel`:
 ### Error: `API error 429` (Rate Limit)
 If PRs are not being created, check the logs for LLM failures:
 ```bash
-kubectl logs -n zelyo-system deploy/Zelyo | grep -i "LLM analysis failed"
+kubectl logs -n zelyo-system deploy/zelyo-operator | grep -i "LLM analysis failed"
 ```
 
 **Root Cause**: Free-tier models (Nvidia/Nemotron) have strict per-day/per-minute usage limits.
@@ -126,11 +126,11 @@ kubectl logs -n zelyo-system deploy/Zelyo | grep -i "LLM analysis failed"
 ### PRs not being created in GitHub
 1.  **Check Engine Initialization**:
     ```bash
-    kubectl logs -n zelyo-system deploy/Zelyo | grep -i "Successfully initialized GitOps engine"
+    kubectl logs -n zelyo-system deploy/zelyo-operator | grep -i "Successfully initialized GitOps engine"
     ```
     *This confirms your GitHub PAT/Token and Repository URL are correctly wired.*
 
 2.  **Verify PR Creation**:
     ```bash
-    kubectl logs -n zelyo-system deploy/Zelyo | grep -i "Pull request created successfully"
+    kubectl logs -n zelyo-system deploy/zelyo-operator | grep -i "Pull request created successfully"
     ```
