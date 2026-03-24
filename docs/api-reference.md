@@ -5,7 +5,7 @@ Zelyo Operator exposes a REST API that powers the embedded dashboard and enables
 ## Base URL
 
 ```
-http://<zelyo-operator-service>:8080/api/v1
+http://<Zelyo-service>:8080/api/v1
 ```
 
 ## Authentication
@@ -13,7 +13,7 @@ http://<zelyo-operator-service>:8080/api/v1
 The API uses Kubernetes ServiceAccount token authentication. Include the bearer token in requests:
 
 ```bash
-TOKEN=$(kubectl create token zelyo-operator -n zelyo-system)
+TOKEN=$(kubectl create token Zelyo -n zelyo-system)
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/health
 ```
 

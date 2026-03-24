@@ -10,7 +10,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 
 ### Reporting Issues
 
-- Use [GitHub Issues](https://github.com/zelyo-ai/zelyo-operator/issues) for bug reports and feature requests
+- Use [GitHub Issues](https://github.com/zelyo-ai/Zelyo/issues) for bug reports and feature requests
 - **Security vulnerabilities**: Please see [SECURITY.md](SECURITY.md) — do not use public issues
 - Include reproduction steps, expected behavior, and actual behavior
 - Include your Kubernetes version, Zelyo Operator version, and cloud provider
@@ -62,11 +62,11 @@ docs(api): add OpenAPI spec for incidents endpoint
 
 ```bash
 # Clone your fork
-git clone https://github.com/<your-username>/zelyo-operator.git
-cd zelyo-operator
+git clone https://github.com/<your-username>/Zelyo.git
+cd Zelyo
 
 # Add upstream remote
-git remote add upstream https://github.com/zelyo-ai/zelyo-operator.git
+git remote add upstream https://github.com/zelyo-ai/Zelyo.git
 
 # Install dependencies
 make install
@@ -78,7 +78,7 @@ make manifests generate
 make test
 
 # Run locally against a kind cluster
-kind create cluster --name zelyo-operator-dev
+kind create cluster --name Zelyo-dev
 make install  # Install CRDs
 make run      # Run the operator
 ```
@@ -138,7 +138,7 @@ go test ./internal/scanner/... -v
 
 ## Questions?
 
-Open a [Discussion](https://github.com/zelyo-ai/zelyo-operator/discussions) for questions about the project.
+Open a [Discussion](https://github.com/zelyo-ai/Zelyo/discussions) for questions about the project.
 
 ---
 

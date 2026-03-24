@@ -109,7 +109,7 @@ Here are example Prometheus alerting rules for Zelyo Operator:
 
 ```yaml
 groups:
-  - name: zelyo-operator
+  - name: Zelyo
     rules:
       - alert: Zelyo OperatorCriticalViolations
         expr: zelyo_operator_scanner_findings_total{severity="critical"} > 0
