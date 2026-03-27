@@ -218,7 +218,8 @@ spec:
                 type: string
               syncStrategy:
                 default: poll
-                description: syncStrategy defines how Zelyo Operator syncs with the repository.
+                description: syncStrategy defines how Zelyo Operator syncs with the
+                  repository.
                 enum:
                 - poll
                 - webhook

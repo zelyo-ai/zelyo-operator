@@ -6,22 +6,22 @@ hide:
 
 <div class="hero" markdown>
 
-![Zelyo Operator](assets/logo.png){ width="120" }
+![Zelyo](assets/logo.png){ width="120" }
 
-# Zelyo Operator
+# Zelyo
 
 <p class="hero-subtitle">Your Digital SRE &amp; Security Engineer for Kubernetes</p>
 
 <div class="badges">
-  <a href="https://github.com/zelyo-ai/zelyo/actions/workflows/ci.yml"><img src="https://github.com/zelyo-ai/zelyo/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/zelyo-ai/zelyo/releases"><img src="https://img.shields.io/github/v/release/zelyo-ai/zelyo?style=flat-square" alt="Release"></a>
-  <a href="https://goreportcard.com/report/github.com/zelyo-ai/zelyo"><img src="https://goreportcard.com/badge/github.com/zelyo-ai/zelyo" alt="Go Report Card"></a>
-  <a href="https://github.com/zelyo-ai/zelyo/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="License"></a>
+  <a href="https://github.com/zelyo-ai/zelyo-operator/actions/workflows/ci.yml"><img src="https://github.com/zelyo-ai/zelyo-operator/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/zelyo-ai/zelyo-operator/releases"><img src="https://img.shields.io/github/v/release/zelyo-ai/zelyo-operator?style=flat-square" alt="Release"></a>
+  <a href="https://goreportcard.com/report/github.com/zelyo-ai/zelyo-operator"><img src="https://goreportcard.com/badge/github.com/zelyo-ai/zelyo-operator" alt="Go Report Card"></a>
+  <a href="https://github.com/zelyo-ai/zelyo-operator/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="License"></a>
 </div>
 
 <div class="hero-actions">
-  <a href="getting-started/" class="primary-btn">🚀 Get Started</a>
-  <a href="https://github.com/zelyo-ai/zelyo" class="secondary-btn">⭐ View on GitHub</a>
+  <a href="quickstart/" class="primary-btn">🚀 Get Started</a>
+  <a href="https://github.com/zelyo-ai/zelyo-operator" class="secondary-btn">⭐ View on GitHub</a>
 </div>
 
 </div>
@@ -193,12 +193,12 @@ graph TB
 === "Kustomize"
 
     ```bash
-    kubectl apply -k https://github.com/zelyo-ai/zelyo/config/default
+    kubectl apply -k https://github.com/zelyo-ai/zelyo-operator/config/default
     ```
 
 
 ---
 
 <p align="center" style="margin-top: 3rem; color: var(--md-default-fg-color--lighter);">
-  An Zelyo AI project. Originally created with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
+  Created with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
 </p>

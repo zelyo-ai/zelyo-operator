@@ -2,19 +2,19 @@
 title: Contributing
 ---
 
-# Contributing to Zelyo Operator
+# 🤝 Contributing to Zelyo Operator
 
-Thank you for your interest in contributing to Zelyo Operator! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Zelyo Operator! Whether you're fixing a bug, adding a feature, or improving documentation — every contribution makes Zelyo better for the community.
 
 ## Code of Conduct
 
 By participating in this project, you agree to abide by our [Code of Conduct](code-of-conduct.md).
 
-## How to Contribute
+## 🗺️ How to Contribute
 
 ### Reporting Issues
 
-- Use [GitHub Issues](https://github.com/zelyo-ai/zelyo/issues) for bug reports and feature requests
+- Use [GitHub Issues](https://github.com/zelyo-ai/zelyo-operator/issues) for bug reports and feature requests
 - **Security vulnerabilities**: Please see our [Security Policy](security.md) — do not use public issues
 - Include reproduction steps, expected behavior, and actual behavior
 - Include your Kubernetes version, Zelyo Operator version, and cloud provider
@@ -40,22 +40,24 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 [optional footer(s)]
 ```
 
-**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`
+| Types | Scopes |
+|---|---|
+| `feat`, `fix`, `docs`, `style`, `refactor` | `scanner`, `monitor`, `llm`, `remediation` |
+| `perf`, `test`, `build`, `ci`, `chore` | `dashboard`, `notifier`, `helm`, `api`, `crd`, `ci` |
 
-**Scopes**: `scanner`, `monitor`, `llm`, `remediation`, `dashboard`, `notifier`, `helm`, `api`, `crd`, `ci`
+**Examples:**
 
-**Examples**:
 ```
 feat(scanner): add RBAC over-permission detection
 fix(llm): respect hourly token budget limits
 docs(api): add OpenAPI spec for incidents endpoint
 ```
 
-## Development Setup
+## 🛠️ Development Setup
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.24+
 - Docker
 - kubectl
 - [kind](https://kind.sigs.k8s.io/) or [minikube](https://minikube.sigs.k8s.io/)
@@ -70,7 +72,7 @@ git clone https://github.com/<your-username>/zelyo-operator.git
 cd zelyo-operator
 
 # Add upstream remote
-git remote add upstream https://github.com/zelyo-ai/zelyo.git
+git remote add upstream https://github.com/zelyo-ai/zelyo-operator.git
 
 # Install dependencies
 make install
@@ -113,7 +115,7 @@ make run      # Run the operator
 └── hack/                  # Development scripts
 ```
 
-### Useful Make Targets
+### Make Targets
 
 | Target | Description |
 |---|---|
@@ -126,7 +128,7 @@ make run      # Run the operator
 | `make install` | Install CRDs into cluster |
 | `make run` | Run operator locally |
 
-## Testing
+## 🧪 Testing
 
 - **Unit tests**: Place in the same package as the code being tested
 - **Integration tests**: Use envtest (Kubebuilder's test framework)
@@ -140,9 +142,9 @@ make test
 go test ./internal/scanner/... -v
 ```
 
-## Questions?
+## ❓ Questions?
 
-Open a [Discussion](https://github.com/zelyo-ai/zelyo/discussions) for questions about the project.
+Open a [Discussion](https://github.com/zelyo-ai/zelyo-operator/discussions) for questions about the project.
 
 ---
 

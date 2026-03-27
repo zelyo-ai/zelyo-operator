@@ -115,8 +115,8 @@ spec:
                 properties:
                   defaultSeverity:
                     default: error
-                    description: severity mapping from Zelyo Operator severity to PagerDuty
-                      severity.
+                    description: severity mapping from Zelyo Operator severity to
+                      PagerDuty severity.
                     enum:
                     - critical
                     - error

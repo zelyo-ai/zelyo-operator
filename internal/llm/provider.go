@@ -185,7 +185,7 @@ func (c *openAICompatClient) doRequest(ctx context.Context, body openAIChatReque
 
 	// Set extra headers for OpenRouter.
 	if c.cfg.Provider == ProviderOpenRouter {
-		httpReq.Header.Set("HTTP-Referer", "https://github.com/zelyo-ai/zelyo")
+		httpReq.Header.Set("HTTP-Referer", "https://github.com/zelyo-ai/zelyo-operator")
 		httpReq.Header.Set("X-Title", "Zelyo Operator")
 	}
 
