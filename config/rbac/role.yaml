@@ -26,71 +26,6 @@ rules:
   - list
   - watch
 - apiGroups:
-  - zelyo.ai
-  resources:
-  - zelyoconfigs
-  - clusterscans
-  - costpolicies
-  - gitopsrepositories
-  - monitoringpolicies
-  - notificationchannels
-  - remediationpolicies
-  - scanreports
-  - securitypolicies
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - zelyo.ai
-  resources:
-  - zelyoconfigs/finalizers
-  - clusterscans/finalizers
-  - costpolicies/finalizers
-  - gitopsrepositories/finalizers
-  - monitoringpolicies/finalizers
-  - notificationchannels/finalizers
-  - remediationpolicies/finalizers
-  - scanreports/finalizers
-  - securitypolicies/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - zelyo.ai
-  resources:
-  - zelyoconfigs/status
-  - clusterscans/status
-  - costpolicies/status
-  - gitopsrepositories/status
-  - monitoringpolicies/status
-  - notificationchannels/status
-  - remediationpolicies/status
-  - scanreports/status
-  - securitypolicies/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - events
-  - persistentvolumeclaims
-  - persistentvolumes
-  - resourcequotas
-  - limitranges
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-- apiGroups:
   - argoproj.io
   resources:
   - applications
@@ -122,3 +57,53 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - zelyo.ai
+  resources:
+  - clusterscans
+  - costpolicies
+  - gitopsrepositories
+  - monitoringpolicies
+  - notificationchannels
+  - remediationpolicies
+  - scanreports
+  - securitypolicies
+  - zelyoconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - zelyo.ai
+  resources:
+  - clusterscans/finalizers
+  - costpolicies/finalizers
+  - gitopsrepositories/finalizers
+  - monitoringpolicies/finalizers
+  - notificationchannels/finalizers
+  - remediationpolicies/finalizers
+  - scanreports/finalizers
+  - securitypolicies/finalizers
+  - zelyoconfigs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - zelyo.ai
+  resources:
+  - clusterscans/status
+  - costpolicies/status
+  - gitopsrepositories/status
+  - monitoringpolicies/status
+  - notificationchannels/status
+  - remediationpolicies/status
+  - scanreports/status
+  - securitypolicies/status
+  - zelyoconfigs/status
+  verbs:
+  - get
+  - patch
+  - update

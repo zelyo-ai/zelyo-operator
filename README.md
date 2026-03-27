@@ -1,55 +1,91 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Zelyo" width="200" />
+  <img src="assets/logo.png" alt="Zelyo" width="180" />
 </p>
 
-<h1 align="center">Zelyo</h1>
+<h1 align="center">Zelyo Operator</h1>
 
 <p align="center">
-  <strong>Your Digital SRE &amp; Security Engineer for Kubernetes</strong>
+  <strong>Your Digital SRE &amp; Security Engineer for Kubernetes</strong><br/>
+  <sub>An agentic AI operator that observes, reasons, and acts on your cluster — 24/7, just like a human engineer would.</sub>
 </p>
+
 <p align="center">
-  <em>An agentic AI operator that observes, reasons, and acts on your cluster — 24/7, just like a human engineer would.</em>
-</p>
-<p align="center">
-  <a href="https://github.com/zelyo-ai/zelyo/actions/workflows/ci.yml"><img src="https://github.com/zelyo-ai/zelyo/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/zelyo-ai/zelyo/releases"><img src="https://img.shields.io/github/v/release/zelyo-ai/zelyo?style=flat-square" alt="Release" /></a>
-  <a href="https://goreportcard.com/report/github.com/zelyo-ai/zelyo"><img src="https://goreportcard.com/badge/github.com/zelyo-ai/zelyo" alt="Go Report Card" /></a>
+  <a href="https://github.com/zelyo-ai/zelyo-operator/actions/workflows/ci.yml"><img src="https://github.com/zelyo-ai/zelyo-operator/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/zelyo-ai/zelyo-operator/releases"><img src="https://img.shields.io/github/v/release/zelyo-ai/zelyo-operator?style=flat-square&color=00c9a7" alt="Release" /></a>
+  <a href="https://goreportcard.com/report/github.com/zelyo-ai/zelyo-operator"><img src="https://goreportcard.com/badge/github.com/zelyo-ai/zelyo-operator" alt="Go Report Card" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="License" /></a>
-  <a href="https://artifacthub.io/packages/helm/zelyo-ai/zelyo"><img src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/zelyo&style=flat-square" alt="Artifact Hub" /></a>
+  <a href="https://artifacthub.io/packages/helm/zelyo-ai/zelyo-operator"><img src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/zelyo-operator&style=flat-square" alt="Artifact Hub" /></a>
+</p>
+
+<p align="center">
+  <a href="https://zelyo-ai.github.io/zelyo-operator/quickstart/">📖 Quick Start</a> &nbsp;·&nbsp;
+  <a href="https://zelyo-ai.github.io/zelyo-operator/">📚 Documentation</a> &nbsp;·&nbsp;
+  <a href="https://github.com/zelyo-ai/zelyo-operator/issues/new?template=bug_report.md">🐛 Report Bug</a> &nbsp;·&nbsp;
+  <a href="https://github.com/zelyo-ai/zelyo-operator/issues/new?template=feature_request.md">✨ Request Feature</a>
 </p>
 
 ---
 
-## What is Zelyo?
+## 🧠 What is Zelyo?
 
-**Zelyo** is your **Digital SRE and Security Engineer** powered by **Agentic AI** that does the job of a full-time site reliability and security engineer. It doesn't just alert — it **observes**, **reasons**, and **acts**, continuously protecting your production clusters while you sleep.
+**Zelyo** is your **Digital SRE and Security Engineer** powered by **Agentic AI**. It doesn't just alert — it **observes**, **reasons**, and **acts**, continuously protecting your production clusters while you sleep.
+
+> **Bring your own LLM API keys** (OpenRouter, OpenAI, Anthropic, Azure OpenAI, Ollama) — Zelyo is heavily optimized to minimize token usage.
 
 Think of a seasoned SRE who:
-- 👁️ **Watches** every pod restart, OOMKill, security misconfiguration, and RBAC drift
-- 🧠 **Correlates** scattered signals into unified incidents (a restart spike + a CVE + a privilege escalation = one root cause)
-- 🔬 **Diagnoses** issues using LLM-powered reasoning with full cluster context
-- 🔧 **Fixes** problems by generating production-ready YAML patches and opening GitOps PRs
-- 📋 **Reports** compliance posture against CIS Benchmarks, NIST 800-53, SOC 2, and PCI-DSS
+
+| &nbsp; | Capability | What Zelyo Does |
+|:---:|---|---|
+| 👁️ | **Watches** | Every pod restart, OOMKill, security misconfiguration, and RBAC drift |
+| 🧠 | **Correlates** | Scattered signals into unified incidents — a restart spike + a CVE + a privilege escalation = one root cause |
+| 🔬 | **Diagnoses** | Issues using LLM reasoning with full cluster context |
+| 🔧 | **Fixes** | Generates production-ready YAML patches and opens GitOps PRs |
+| 📋 | **Reports** | Compliance posture against CIS Benchmarks, NIST 800-53, SOC 2, and PCI-DSS |
 
 That's Zelyo. All automated, all autonomous, all with **read-only cluster access**.
 
-**Bring your own LLM API keys** (OpenRouter, OpenAI, Anthropic, Azure OpenAI, Ollama) — Zelyo is heavily optimized to minimize token usage.
+---
 
-### What a Digital SRE & Security Engineer Does
+## ⚡ Key Capabilities
 
-| Responsibility | How Zelyo Handles It |
-|---|---|
-| 🔒 **Security Scanning** | Continuously scans for RBAC issues, image CVEs, PodSecurity violations, secrets exposure, and network policy gaps |
-| 🛡️ **Compliance Auditing** | Maps scan findings to CIS Kubernetes Benchmark controls, generates audit-ready reports with evidence |
-| 🧠 **Anomaly Detection** | Builds σ-deviation baselines for pod restarts, resource usage, and error rates — detects anomalies without static thresholds |
-| 🔗 **Incident Correlation** | Groups related events within time windows into unified incidents for LLM diagnosis — no more alert fatigue |
-| 🔄 **Drift Detection** | Compares live cluster state against your Git repo, identifying shadow resources and ClickOps changes |
-| 🤖 **Auto-Remediation** | LLM generates structured JSON fix plans, validates them, and opens GitOps PRs with risk scores |
-| 💰 **Cost Optimization** | Detects idle workloads, recommends rightsizing, and assesses spot-instance readiness |
-| 📢 **On-Call Notifications** | Routes alerts to Slack, Teams, PagerDuty, Telegram, WhatsApp, and webhooks with severity filtering and deduplication |
-| 📊 **Observability** | Exposes Prometheus metrics, compliance percentages, and scan results — integrates with your existing Grafana dashboards |
+<table>
+<tr>
+<td width="50%">
 
-### The Agentic Pipeline: Observe → Reason → Act
+### 🔒 Security Scanning
+Continuously scans for RBAC issues, image CVEs, PodSecurity violations, secrets exposure, and network policy gaps.
+
+### 🧠 Anomaly Detection
+Builds σ-deviation baselines for pod restarts, resource usage, and error rates — detects anomalies without static thresholds.
+
+### 🔄 Drift Detection
+Compares live cluster state against your Git repo, identifying shadow resources and ClickOps changes.
+
+### 💰 Cost Optimization
+Detects idle workloads, recommends rightsizing, and assesses spot-instance readiness.
+
+</td>
+<td width="50%">
+
+### 🛡️ Compliance Auditing
+Maps scan findings to CIS Kubernetes Benchmark controls, generates audit-ready reports with evidence.
+
+### 🔗 Incident Correlation
+Groups related events within time windows into unified incidents for LLM diagnosis — no more alert fatigue.
+
+### 🤖 Auto-Remediation
+LLM generates structured JSON fix plans, validates them, and opens GitOps PRs with risk scores.
+
+### 📢 On-Call Notifications
+Routes alerts to Slack, Teams, PagerDuty, Telegram, WhatsApp, and webhooks with severity filtering and deduplication.
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🔁 The Agentic Pipeline: Observe → Reason → Act
 
 Unlike traditional scanning tools that dump findings and walk away, Zelyo operates as a **closed-loop autonomous agent**:
 
@@ -74,16 +110,18 @@ graph LR
 4. **Act** — The remediation engine validates the plan, and the GitHub engine opens a PR with the fix
 5. **Report** — Compliance reports, Kubernetes events, and Prometheus metrics flow to your dashboards
 
-### Dual Operating Modes
+---
+
+## 🎯 Dual Operating Modes
 
 | Mode | When | Behavior |
-|---|---|---|
-| **🔍 Audit Mode** (default) | No GitOps repo onboarded | Observes, diagnoses, and alerts — your Digital Security Analyst |
-| **🛡️ Protect Mode** | GitOps repo onboarded | Full autonomous remediation — your Digital SRE on autopilot |
+|:---:|---|---|
+| 🔍 **Audit Mode** *(default)* | No GitOps repo onboarded | Observes, diagnoses, and alerts — your Digital Security Analyst |
+| 🛡️ **Protect Mode** | GitOps repo onboarded | Full autonomous remediation — your Digital SRE on autopilot |
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```mermaid
 graph TB
@@ -138,7 +176,7 @@ graph TB
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Install via Helm (OCI)
 
@@ -197,7 +235,8 @@ spec:
       autoRemediate: true
 ```
 
-### Onboard a GitOps Repository (Activate Protect Mode)
+<details>
+<summary><strong>🛡️ Onboard a GitOps Repository (Activate Protect Mode)</strong></summary>
 
 ```yaml
 apiVersion: zelyo.ai/v1alpha1
@@ -216,7 +255,10 @@ spec:
   syncStrategy: poll
 ```
 
-### Enable Auto-Remediation
+</details>
+
+<details>
+<summary><strong>🤖 Enable Auto-Remediation</strong></summary>
 
 ```yaml
 apiVersion: zelyo.ai/v1alpha1
@@ -236,9 +278,11 @@ spec:
     branchPrefix: "zelyo/fix-"
 ```
 
+</details>
+
 ---
 
-## CRD Reference
+## 📦 CRD Reference
 
 Zelyo Operator uses **9 Custom Resource Definitions** to declaratively configure every aspect of the Digital SRE:
 
@@ -254,11 +298,14 @@ Zelyo Operator uses **9 Custom Resource Definitions** to declaratively configure
 | `CostPolicy` | Configures cost optimization rules and thresholds |
 | `NotificationChannel` | Configures alert delivery — Slack, Teams, PagerDuty, webhooks |
 
-See [CRD Reference](docs/crd-reference.md) for complete field documentation.
+> 📚 See [CRD Reference](docs/crd-reference.md) for complete field documentation.
 
 ---
 
-## Internal Package Architecture
+## 🧩 Internal Package Architecture
+
+<details>
+<summary><strong>Click to expand internal package map</strong></summary>
 
 | Package | Role in the Digital SRE |
 |---|---|
@@ -275,13 +322,15 @@ See [CRD Reference](docs/crd-reference.md) for complete field documentation.
 | `internal/monitor` | Real-time Kubernetes resource watcher with event dispatch |
 | `internal/controller` | 7 Kubernetes controllers orchestrating the Observe → Reason → Act pipeline |
 
+</details>
+
 ---
 
-## Development
+## 🛠️ Development
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.25+
 - Docker
 - kubectl
 - [kind](https://kind.sigs.k8s.io/) or [minikube](https://minikube.sigs.k8s.io/)
@@ -292,8 +341,8 @@ See [CRD Reference](docs/crd-reference.md) for complete field documentation.
 
 ```bash
 # Clone the repository
-git clone https://github.com/zelyo-ai/zelyo.git
-cd zelyo
+git clone https://github.com/zelyo-ai/zelyo-operator.git
+cd zelyo-operator
 
 # Install dependencies
 make install
@@ -326,7 +375,7 @@ make docker-push IMG=ghcr.io/zelyo-ai/zelyo-operator:dev
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 | Document | Description |
 |---|---|
@@ -344,24 +393,21 @@ make docker-push IMG=ghcr.io/zelyo-ai/zelyo-operator:dev
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
----
-
-## Security
+## 🔐 Security
 
 To report a security vulnerability, please see [SECURITY.md](SECURITY.md).
 
----
-
-## License
+## 📄 License
 
 Zelyo Operator is licensed under the [Apache License 2.0](LICENSE).
 
 ---
 
 <p align="center">
-Created with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a>
+  <sub>Created with ❤️ by <a href="https://zelyo.ai">Zelyo AI</a></sub><br/>
+  <sub>⭐ If Zelyo saves you an on-call page, consider giving us a star!</sub>
 </p>
