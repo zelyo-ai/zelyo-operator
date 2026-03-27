@@ -330,7 +330,7 @@ Zelyo Operator uses **9 Custom Resource Definitions** to declaratively configure
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.25+
 - Docker
 - kubectl
 - [kind](https://kind.sigs.k8s.io/) or [minikube](https://minikube.sigs.k8s.io/)
