@@ -6,7 +6,7 @@ version: 0.0.1
 appVersion: "0.0.1"
 kubeVersion: ">=1.26.0-0"
 home: https://github.com/zelyo-ai/zelyo-operator
-icon: https://raw.githubusercontent.com/zelyo-ai/zelyo-operator/main/docs/assets/icon.png
+icon: https://raw.githubusercontent.com/zelyo-ai/zelyo/main/docs/assets/icon.png
 sources:
   - https://github.com/zelyo-ai/zelyo-operator
 maintainers:

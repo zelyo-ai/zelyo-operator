@@ -5,11 +5,10 @@ description: "Learn how to deploy Zelyo Operator and automate your Kubernetes in
 
 # Quickstart Guide
 
-> [!NOTE]
-> **Who is this guide for?**
-> This is a complete, self-sufficient guide to setting up and using Zelyo Operator — from a blank laptop to running AI-powered security scans. No prior Kubernetes operator experience required.
+# Quick Start Guide
 
----
+!!! note "Who is this guide for?"
+    This is a complete, self-sufficient guide to setting up and using Zelyo Operator — from a blank laptop to running AI-powered security scans. No prior Kubernetes operator experience required.
 
 ## What Is Zelyo Operator?
 
@@ -25,8 +24,6 @@ Observe → Reason → Act
 - **Reason**: Uses an LLM to explain findings and recommend fixes
 - **Act**: Creates GitHub PRs to remediate violations (optional)
 
----
-
 ## Prerequisites
 
 Before starting, install these tools:
@@ -38,17 +35,14 @@ Before starting, install these tools:
 | [kubectl](https://kubernetes.io/docs/tasks/tools/) | Latest | Comes with Docker Desktop or install standalone |
 | [Helm](https://helm.sh/docs/intro/install/) | 3.x | `brew install helm` or [helm.sh](https://helm.sh/) |
 
-> [!TIP]
-> **Verify your tools are ready:**
-> ```bash
-> docker --version && k3d --version && kubectl version --client && helm version
-> ```
-
----
+!!! tip "Verify your tools are ready"
+    ```bash
+    docker --version && k3d --version && kubectl version --client && helm version
+    ```
 
 ## Part 1 — Environment Setup
 
-### Step 0: Clean the Slates
+### Step 0: Clean the Slate
 
 Start fresh to avoid port conflicts with any previous cluster:
 
@@ -60,8 +54,6 @@ k3d cluster delete zelyo
 docker network prune -f
 ```
 
----
-
 ### Step 1: Create a Fresh Local Cluster
 
 ```bash
@@ -70,9 +62,8 @@ k3d cluster create zelyo
 
 This creates a single-node Kubernetes cluster running inside Docker. It takes about 30 seconds.
 
-> [!NOTE]
-> **What's happening here?**
-> k3d runs Kubernetes inside Docker containers — much faster than spinning up real VMs. Your `kubectl` context is automatically switched to `k3d-zelyo`.
+!!! info "What's happening here?"
+    k3d runs Kubernetes inside Docker containers — much faster than spinning up real VMs. Your `kubectl` context is automatically switched to `k3d-zelyo`.
 
 Verify the cluster is running:
 
@@ -82,10 +73,10 @@ kubectl get nodes
 # k3d-zelyo-server-0   Ready    control-plane,master   30s   v1.31.x
 ```
 
----
+### Step 1.5: Prepare Local Developer Build
 
-### Step 1.5: Prepare Local Developer Build (Recommended for Demos)
-For modern features like Slack notifications and enhanced GitOps logic (which are currently being finalized in this dev-build), you should build and deploy the operator locally:
+!!! tip "Recommended for Demos"
+    For modern features like Slack notifications and enhanced GitOps logic (which are currently being finalized in this dev-build), you should build and deploy the operator locally.
 
 ```bash
 # 1. Build the local development image
@@ -94,11 +85,6 @@ make docker-build IMG=zelyo-operator:local
 # 2. Import the image into your k3d cluster (named 'zelyo')
 k3d image import zelyo-operator:local -c zelyo
 ```
-
-> [!TIP]
-> **Why this step?** The official `0.0.1` image in the cloud does not yet have the latest Slack dispatch logic. Importing your local version ensures the demo is 100% functional.
-
----
 
 ### Step 2: Install cert-manager
 
@@ -126,8 +112,6 @@ kubectl get pods -n cert-manager
 # cert-manager-webhook-xxx                  1/1     Running   0          60s
 ```
 
----
-
 ### Step 3: Install Zelyo Operator
 
 ```bash
@@ -141,23 +125,18 @@ helm install zelyo-operator oci://ghcr.io/zelyo-ai/charts/zelyo-operator \
   --set image.pullPolicy=IfNotPresent \
   --set config.llm.provider=openrouter \
   --set config.llm.model=google/gemini-2.0-flash-001 \
-  --set config.llm.apiKeySecret=zelyo-llm \
   --set webhook.certManager.enabled=true
 ```
 
-> [!TIP]
-> **Verify the operator is running:**
-> ```bash
-> kubectl get pods -n zelyo-system
-> # NAME                              READY   STATUS    RESTARTS   AGE
-> # zelyo-operator-669577fb4b-7kpg2   1/1     Running   0          30s
-> ```
+!!! tip "Verify the operator is running"
+    ```bash
+    kubectl get pods -n zelyo-system
+    # NAME                              READY   STATUS    RESTARTS   AGE
+    # zelyo-operator-669577fb4b-7kpg2   1/1     Running   0          30s
+    ```
 
-> [!WARNING]
-> **Troubleshooting: Webhook Error?**
-> If you see `failed calling webhook "msecuritypolicy.zelyo.ai"` when applying resources, run the **[Webhook Patch](troubleshooting.md#webhooks)** commands. This is a known path mismatch in OCI chart `v0.0.1`.
-
----
+!!! warning "Webhook Error?"
+    If you see `failed calling webhook "msecuritypolicy.zelyo.ai"` when applying resources, run the **[Webhook Patch](troubleshooting.md#webhooks)** commands. This is a known path mismatch in OCI chart `v0.0.1`.
 
 ### Step 4: Add Your LLM API Key
 
@@ -174,10 +153,12 @@ OpenRouter is a gateway that gives you access to Claude, GPT-4, Nvidia, and 100+
 3. Copy your key (starts with `sk-or-v1-...`)
 4. Add credit at **Credits** (minimum $1) — models like Claude Haiku cost fractions of a cent per scan
 
-> [!TIP]
-> **Free tier:** `nvidia/nemotron-3-super-120b-a12b:free` — no cost, great for initial testing.
-> **Best for testing:** `anthropic/claude-haiku` — fast and cheap (~$0.001 per scan).
-> **Best for production:** `anthropic/claude-sonnet-4-20250514` — highest reasoning quality.
+!!! tip "Model Recommendations"
+    | Tier | Model | Cost |
+    |---|---|---|
+    | **Free tier** | `nvidia/nemotron-3-super-120b-a12b:free` | No cost, great for initial testing |
+    | **Best for testing** | `anthropic/claude-haiku` | Fast and cheap (~$0.001 per scan) |
+    | **Best for production** | `anthropic/claude-sonnet-4-20250514` | Highest reasoning quality |
 
 #### Other Supported Providers
 
@@ -196,10 +177,8 @@ kubectl create secret generic zelyo-llm \
   --from-literal=api-key=<YOUR_API_KEY>
 ```
 
-> [!CAUTION]
-> **Never commit API keys to git.** Use `kubectl create secret` or a secrets manager, never paste them into YAML files.
-
----
+!!! danger "Never commit API keys to git."
+    Use `kubectl create secret` or a secrets manager — never paste them into YAML files.
 
 ### Step 5: Activate the AI Agent
 
@@ -211,7 +190,6 @@ apiVersion: zelyo.ai/v1alpha1
 kind: ZelyoConfig
 metadata:
   name: default
-  namespace: zelyo-system
 spec:
   mode: protect  # Use 'protect' to allow automatic PR creation
   llm:
@@ -221,13 +199,8 @@ spec:
 EOF
 ```
 
-
-> [!NOTE]
-> **What's happening here?**
-> Once applied, the operator reconciles this config, initializes a secure LLM client using your secret, and injects it into the remediation engine. You'll see `ZelyoConfig reconciled successfully` in the logs.
-
----
-
+!!! info "What's happening here?"
+    Once applied, the operator reconciles this config, initializes a secure LLM client using your secret, and injects it into the remediation engine. You'll see `ZelyoConfig reconciled successfully` in the logs.
 
 ## Part 2 — The 8 Security Scanners
 
@@ -241,127 +214,111 @@ Zelyo Operator ships with 8 built-in scanners. Every scanner runs automatically 
 4. Findings below your `spec.severity` threshold are filtered out
 5. Results are stored in `.status` and emitted as Kubernetes Events
 
----
+### Scanner Reference
 
-### Scanner 1: Container Security Context
+=== "Security Context"
 
-**Rule type:** `container-security-context`
+    **Rule type:** `container-security-context`
 
-Checks that containers follow security best practices for their `securityContext`.
+    Checks that containers follow security best practices for their `securityContext`.
 
-| Check | Severity | What It Means |
-|---|---|---|
-| No security context set | High | No restrictions at all |
-| `privileged: true` | Critical | Full access to the host kernel |
-| `runAsNonRoot` not set | High | Container might run as root |
-| `readOnlyRootFilesystem` not set | Medium | Filesystem is writable (aids attackers) |
-| `allowPrivilegeEscalation` not false | Medium | Child processes can gain more privileges |
+    | Check | Severity | What It Means |
+    |---|---|---|
+    | No security context set | High | No restrictions at all |
+    | `privileged: true` | Critical | Full access to the host kernel |
+    | `runAsNonRoot` not set | High | Container might run as root |
+    | `readOnlyRootFilesystem` not set | Medium | Filesystem is writable (aids attackers) |
+    | `allowPrivilegeEscalation` not false | Medium | Child processes can gain more privileges |
 
----
+=== "Resource Limits"
 
-### Scanner 2: Resource Limits
+    **Rule type:** `resource-limits`
 
-**Rule type:** `resource-limits`
+    Checks that every container has CPU and memory requests/limits. Without them, one pod can starve the whole node.
 
-Checks that every container has CPU and memory requests/limits. Without them, one pod can starve the whole node.
+    | Check | Severity |
+    |---|---|
+    | No CPU request | Medium |
+    | No CPU limit | Medium |
+    | No memory request | Medium |
+    | No memory limit | Medium |
 
-| Check | Severity |
-|---|---|
-| No CPU request | Medium |
-| No CPU limit | Medium |
-| No memory request | Medium |
-| No memory limit | Medium |
+=== "Image Pinning"
 
----
+    **Rule type:** `image-vulnerability`
 
-### Scanner 3: Image Pinning
+    Checks that images are pinned — not floating on `:latest` or mutable tags.
 
-**Rule type:** `image-vulnerability`
+    | Check | Severity | Why It Matters |
+    |---|---|---|
+    | Uses `:latest` tag | High | Image can change without notice |
+    | No tag (defaults to latest) | High | Same risk |
+    | Not pinned by digest | Medium | Even versioned tags can be overwritten |
 
-Checks that images are pinned — not floating on `:latest` or mutable tags.
+=== "Pod Security"
 
-| Check | Severity | Why It Matters |
-|---|---|---|
-| Uses `:latest` tag | High | Image can change without notice |
-| No tag (defaults to latest) | High | Same risk |
-| Not pinned by digest | Medium | Even versioned tags can be overwritten |
+    **Rule type:** `pod-security`
 
----
+    Checks for Pod Security Standards violations.
 
-### Scanner 4: Pod Security
+    | Check | Severity |
+    |---|---|
+    | `hostNetwork: true` | Critical |
+    | `hostPID: true` | Critical |
+    | `hostIPC: true` | High |
+    | HostPath volume mounts | High–Critical |
+    | Dangerous capabilities (SYS_ADMIN, NET_RAW) | High |
 
-**Rule type:** `pod-security`
+=== "Privilege Escalation"
 
-Checks for Pod Security Standards violations.
+    **Rule type:** `privilege-escalation`
 
-| Check | Severity |
-|---|---|
-| `hostNetwork: true` | Critical |
-| `hostPID: true` | Critical |
-| `hostIPC: true` | High |
-| HostPath volume mounts | High–Critical |
-| Dangerous capabilities (SYS_ADMIN, NET_RAW) | High |
+    Checks for settings that let attackers escalate privileges after compromise.
 
----
+    | Check | Severity |
+    |---|---|
+    | Runs as root (UID 0) | Critical |
+    | Service account token auto-mounted | Medium |
+    | Root group (GID 0) | Medium |
 
-### Scanner 5: Privilege Escalation
+    !!! tip "Quick win"
+        Add `automountServiceAccountToken: false` to every pod that doesn't need Kubernetes API access. Eliminates the most common privilege escalation vector with one line.
 
-**Rule type:** `privilege-escalation`
+=== "Secrets Exposure"
 
-Checks for settings that let attackers escalate privileges after compromise.
+    **Rule type:** `secrets-exposure`
 
-| Check | Severity |
-|---|---|
-| Runs as root (UID 0) | Critical |
-| Service account token auto-mounted | Medium |
-| Root group (GID 0) | Medium |
+    Checks for patterns that could leak sensitive data through environment variables.
 
-> [!TIP]
-> **Quick win:** Add `automountServiceAccountToken: false` to every pod that doesn't need Kubernetes API access. Eliminates the most common privilege escalation vector with one line.
+    | Check | Severity |
+    |---|---|
+    | Hardcoded secret in env var | Critical |
+    | Entire Secret injected via `envFrom` | Medium |
+    | Secret passed via `secretKeyRef` | Low |
 
----
+    **Detected patterns:** env var names containing `password`, `secret`, `token`, `api_key`, `access_key`, `private_key`, `credentials`, `auth`.
 
-### Scanner 6: Secrets Exposure
+=== "Network Policy"
 
-**Rule type:** `secrets-exposure`
+    **Rule type:** `network-policy`
 
-Checks for patterns that could leak sensitive data through environment variables.
+    Checks for network segmentation gaps.
 
-| Check | Severity |
-|---|---|
-| Hardcoded secret in env var | Critical |
-| Entire Secret injected via `envFrom` | Medium |
-| Secret passed via `secretKeyRef` | Low |
+    | Check | Severity |
+    |---|---|
+    | Pod has no labels | Medium |
+    | Container uses `hostPort` | High |
 
-**Detected patterns:** env var names containing `password`, `secret`, `token`, `api_key`, `access_key`, `private_key`, `credentials`, `auth`.
+=== "RBAC Audit"
 
----
+    **Rule type:** `rbac-audit`
 
-### Scanner 7: Network Policy
+    Checks for RBAC-related risks at the pod level.
 
-**Rule type:** `network-policy`
-
-Checks for network segmentation gaps.
-
-| Check | Severity |
-|---|---|
-| Pod has no labels | Medium |
-| Container uses `hostPort` | High |
-
----
-
-### Scanner 8: RBAC Audit
-
-**Rule type:** `rbac-audit`
-
-Checks for RBAC-related risks at the pod level.
-
-| Check | Severity |
-|---|---|
-| Uses the `default` service account | Medium |
-| Service account name contains "admin" or "root" | High |
-
----
+    | Check | Severity |
+    |---|---|
+    | Uses the `default` service account | Medium |
+    | Service account name contains "admin" or "root" | High |
 
 ## Part 3 — Recipes
 
@@ -436,14 +393,11 @@ production-security-baseline   medium     Active   8            30s
 
 Look at the `Status > Conditions` section in the describe output — you'll see `ScanCompleted=True` and the full reasoning from the LLM.
 
-#### Cleanup
-
-```bash
-kubectl delete pod insecure-nginx -n default
-kubectl delete securitypolicy production-security-baseline -n zelyo-system
-```
-
----
+??? abstract "Cleanup"
+    ```bash
+    kubectl delete pod insecure-nginx -n default
+    kubectl delete securitypolicy production-security-baseline -n zelyo-system
+    ```
 
 ### Recipe 2: Critical-Only Alerting
 
@@ -488,14 +442,11 @@ kubectl describe securitypolicy critical-only -n zelyo-system
 
 **Expected:** Fewer violations compared to Recipe 1 — only high-severity issues appear.
 
-#### Cleanup
-
-```bash
-kubectl delete pod insecure-nginx -n default
-kubectl delete securitypolicy critical-only -n zelyo-system
-```
-
----
+??? abstract "Cleanup"
+    ```bash
+    kubectl delete pod insecure-nginx -n default
+    kubectl delete securitypolicy critical-only -n zelyo-system
+    ```
 
 ### Recipe 3: Nightly Full-Cluster Scan
 
@@ -529,8 +480,8 @@ spec:
 EOF
 ```
 
-> [!TIP]
-> **Test immediately without waiting until 2 AM:** Change `schedule: "0 2 * * *"` to `schedule: "* * * * *"` to trigger a scan every minute.
+!!! tip "Test immediately without waiting until 2 AM"
+    Change `schedule: "0 2 * * *"` to `schedule: "* * * * *"` to trigger a scan every minute.
 
 #### Watch for Reports
 
@@ -550,14 +501,11 @@ NAME                           SCAN                FINDINGS   CRITICAL   HIGH   
 nightly-full-scan-1773826310   nightly-full-scan   20                    6      29s
 ```
 
-#### Cleanup
-
-```bash
-kubectl delete clusterscan nightly-full-scan -n zelyo-system
-kubectl delete scanreports --all -n zelyo-system
-```
-
----
+??? abstract "Cleanup"
+    ```bash
+    kubectl delete clusterscan nightly-full-scan -n zelyo-system
+    kubectl delete scanreports --all -n zelyo-system
+    ```
 
 ### Recipe 4: Cost Optimization
 
@@ -584,20 +532,15 @@ spec:
 EOF
 ```
 
-#### Check Recommendations
-
 ```bash
 kubectl get costpolicy optimize-default -n zelyo-system -o wide
 kubectl describe costpolicy optimize-default -n zelyo-system
 ```
 
-#### Cleanup
-
-```bash
-kubectl delete costpolicy optimize-default -n zelyo-system
-```
-
----
+??? abstract "Cleanup"
+    ```bash
+    kubectl delete costpolicy optimize-default -n zelyo-system
+    ```
 
 ### Recipe 5: Slack Alerts
 
@@ -605,14 +548,13 @@ kubectl delete costpolicy optimize-default -n zelyo-system
 
 #### Step 1: Get a Slack Webhook URL
 
-> [!TIP]
-> **How to get a Slack Webhook URL**
-> 1. Go to [api.slack.com/apps](https://api.slack.com/apps)
-> 2. Click **Create New App** → **From scratch**
-> 3. Choose a name (e.g., "Zelyo Operator") and your workspace
-> 4. Go to **Incoming Webhooks** → toggle **Activate Incoming Webhooks** to On
-> 5. Click **Add New Webhook to Workspace** → choose your channel → **Allow**
-> 6. Copy the Webhook URL (starts with `https://hooks.slack.com/services/...`)
+!!! tip "How to get a Slack Webhook URL"
+    1. Go to [api.slack.com/apps](https://api.slack.com/apps)
+    2. Click **Create New App** → **From scratch**
+    3. Choose a name (e.g., "Zelyo Operator") and your workspace
+    4. Go to **Incoming Webhooks** → toggle **Activate Incoming Webhooks** to On
+    5. Click **Add New Webhook to Workspace** → choose your channel → **Allow**
+    6. Copy the Webhook URL (starts with `https://hooks.slack.com/services/...`)
 
 #### Step 2: Create the Secret
 
@@ -668,15 +610,12 @@ kubectl get notificationchannel slack-security -n zelyo-system
 kubectl get monitoringpolicy production-monitoring -n zelyo-system
 ```
 
-#### Cleanup
-
-```bash
-kubectl delete monitoringpolicy production-monitoring -n zelyo-system
-kubectl delete notificationchannel slack-security -n zelyo-system
-kubectl delete secret slack-token -n zelyo-system
-```
-
----
+??? abstract "Cleanup"
+    ```bash
+    kubectl delete monitoringpolicy production-monitoring -n zelyo-system
+    kubectl delete notificationchannel slack-security -n zelyo-system
+    kubectl delete secret slack-token -n zelyo-system
+    ```
 
 ### Recipe 6: GitOps Automated Remediation
 
@@ -689,8 +628,8 @@ kubectl delete secret slack-token -n zelyo-system
 3. Select scopes: `repo` (full control of private repos)
 4. Click **Generate token** and copy it (starts with `ghp_...`)
 
-> [!CAUTION]
-> **Store your token securely.** GitHub only shows it once. If lost, you must regenerate it.
+!!! danger "Store your token securely."
+    GitHub only shows it once. If lost, you must regenerate it.
 
 #### Step 2: Create the Kubernetes Secret
 
@@ -727,6 +666,7 @@ kubectl describe gitopsrepository infra-repo -n zelyo-system
 ```
 
 Look for these conditions in the output:
+
 - `SecretResolved` → authentication secret found ✅
 - `GitOpsConnected` → repository is reachable ✅
 - `Ready` → everything is operational ✅
@@ -754,18 +694,15 @@ spec:
 EOF
 ```
 
-> [!NOTE]
-> **`dryRun: true` for testing:** Set this while testing to see what PRs would be created without actually opening them. Switch to `false` when ready to go live.
+!!! info "`dryRun: true` for testing"
+    Set this while testing to see what PRs would be created without actually opening them. Switch to `false` when ready to go live.
 
-#### Cleanup
-
-```bash
-kubectl delete remediationpolicy auto-fix-security -n zelyo-system
-kubectl delete gitopsrepository infra-repo -n zelyo-system
-kubectl delete secret github-creds -n zelyo-system
-```
-
----
+??? abstract "Cleanup"
+    ```bash
+    kubectl delete remediationpolicy auto-fix-security -n zelyo-system
+    kubectl delete gitopsrepository infra-repo -n zelyo-system
+    kubectl delete secret github-creds -n zelyo-system
+    ```
 
 ## Part 4 — Advanced Configuration
 
@@ -779,7 +716,6 @@ apiVersion: zelyo.ai/v1alpha1
 kind: ZelyoConfig
 metadata:
   name: default
-  namespace: zelyo-system
 spec:
   llm:
     provider: openrouter
@@ -800,7 +736,7 @@ EOF
 Monitor LLM token usage:
 
 ```bash
-kubectl get zelyoconfigs default -n zelyo-system -o jsonpath='{.status.tokenUsage}'
+kubectl get zelyoconfigs default -o jsonpath='{.status.tokenUsage}'
 ```
 
 ### Switching LLM Providers
@@ -822,8 +758,6 @@ helm upgrade zelyo-operator oci://ghcr.io/zelyo-ai/charts/zelyo-operator \
   --set config.llm.apiKeySecret=zelyo-llm
 ```
 
----
-
 ## Part 5 — Observability
 
 ### Check Operator Health
@@ -833,7 +767,7 @@ helm upgrade zelyo-operator oci://ghcr.io/zelyo-ai/charts/zelyo-operator \
 kubectl get pods -n zelyo-system
 
 # Live log stream
-kubectl logs -f deploy/zelyo-operator-controller-manager -n zelyo-system
+kubectl logs -f deploy/zelyo-operator -n zelyo-system
 
 # Events for a specific resource
 kubectl events --for securitypolicy/production-security-baseline -n zelyo-system
@@ -859,17 +793,14 @@ kubectl port-forward -n zelyo-system svc/zelyo-operator 8080:8080
 # Then open http://localhost:8080
 ```
 
----
-
----
-
 ## Part 6 — Verification & Troubleshooting
 
 After applying your policies, monitor the operator logs to ensure that notifications are being sent and remediation plans are being generated.
 
-For specific commands to verify Slack alerts, AI reasoning (LLM) status, and GitOps PR creation, see the **[Troubleshooting Guide](troubleshooting.md#slack-notifications)**.
+For specific commands to verify Slack alerts, AI reasoning (LLM) status, and GitOps PR creation, see the **[Troubleshooting Guide](troubleshooting.md)**.
 
----
+!!! warning "Webhook Error?"
+    If you see `failed calling webhook "msecuritypolicy.zelyo.ai"` while applying any resource, run the [Webhook Patch](troubleshooting.md#webhooks) commands. This is a known issue with OCI chart `v0.0.1`.
 
 ## Part 7 — Full Environment Teardown
 
@@ -877,7 +808,8 @@ When you're done testing, remove everything cleanly:
 
 ```bash
 # Delete all Zelyo resources
-kubectl delete securitypolicies,clusterscans,scanreports,costpolicies,monitoringpolicies,notificationchannels,remediationpolicies,gitopsrepositories,zelyoconfigs --all -n zelyo-system
+kubectl delete securitypolicies,clusterscans,scanreports,costpolicies,monitoringpolicies,notificationchannels,remediationpolicies,gitopsrepositories --all -n zelyo-system
+kubectl delete zelyoconfigs --all
 
 # Uninstall the operator and cert-manager
 helm uninstall zelyo-operator -n zelyo-system
@@ -886,9 +818,3 @@ helm uninstall cert-manager -n cert-manager
 # Delete the cluster
 k3d cluster delete zelyo
 ```
-
----
-
-> [!CAUTION]
-> **Troubleshooting: Webhook Error?**
-> If you see `failed calling webhook "msecuritypolicy.zelyo.ai"` while applying any resource, run the [Webhook Patch](troubleshooting.md#webhooks) commands. This is a known issue with OCI chart `v0.0.1`.

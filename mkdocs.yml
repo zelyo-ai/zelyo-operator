@@ -4,8 +4,8 @@ site_description: Autonomous AI operator for Kubernetes incident response and De
 site_author: Zelyo AI
 copyright: Copyright &copy; 2026 Zelyo AI — Apache 2.0 License
 
-repo_name: zelyo-ai/zelyo
-repo_url: https://github.com/zelyo-ai/zelyo
+repo_name: zelyo-ai/zelyo-operator
+repo_url: https://github.com/zelyo-ai/zelyo-operator
 
 theme:
   name: material
@@ -56,7 +56,7 @@ extra_css:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/zelyo-ai/zelyo
+      link: https://github.com/zelyo-ai/zelyo-operator
     - icon: fontawesome/solid/globe
       link: https://zelyo.ai
     - icon: fontawesome/solid/shield-halved
