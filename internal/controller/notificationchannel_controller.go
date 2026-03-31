@@ -32,7 +32,7 @@ import (
 
 	zelyov1alpha1 "github.com/zelyo-ai/zelyo-operator/api/v1alpha1"
 	"github.com/zelyo-ai/zelyo-operator/internal/conditions"
-	aotmetrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
+	zelyometrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
 )
 
 // NotificationChannelReconciler reconciles a NotificationChannel object.
@@ -53,7 +53,7 @@ func (r *NotificationChannelReconciler) Reconcile(ctx context.Context, req ctrl.
 	log := logf.FromContext(ctx)
 	start := time.Now()
 	defer func() {
-		aotmetrics.ReconcileDuration.WithLabelValues("notificationchannel").Observe(time.Since(start).Seconds())
+		zelyometrics.ReconcileDuration.WithLabelValues("notificationchannel").Observe(time.Since(start).Seconds())
 	}()
 
 	channel := &zelyov1alpha1.NotificationChannel{}
@@ -111,7 +111,7 @@ func (r *NotificationChannelReconciler) Reconcile(ctx context.Context, req ctrl.
 	r.Recorder.Event(channel, corev1.EventTypeNormal, zelyov1alpha1.EventReasonReconciled,
 		fmt.Sprintf("NotificationChannel configured (type=%s)", channel.Spec.Type))
 
-	aotmetrics.ReconcileTotal.WithLabelValues("notificationchannel", "success").Inc()
+	zelyometrics.ReconcileTotal.WithLabelValues("notificationchannel", "success").Inc()
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 

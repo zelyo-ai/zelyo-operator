@@ -32,7 +32,7 @@ import (
 
 	zelyov1alpha1 "github.com/zelyo-ai/zelyo-operator/api/v1alpha1"
 	"github.com/zelyo-ai/zelyo-operator/internal/conditions"
-	aotmetrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
+	zelyometrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
 )
 
 // CostPolicyReconciler reconciles a CostPolicy object.
@@ -56,7 +56,7 @@ func (r *CostPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	log := logf.FromContext(ctx)
 	start := time.Now()
 	defer func() {
-		aotmetrics.ReconcileDuration.WithLabelValues("costpolicy").Observe(time.Since(start).Seconds())
+		zelyometrics.ReconcileDuration.WithLabelValues("costpolicy").Observe(time.Since(start).Seconds())
 	}()
 
 	policy := &zelyov1alpha1.CostPolicy{}
@@ -131,8 +131,8 @@ func (r *CostPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	r.Recorder.Event(policy, corev1.EventTypeNormal, zelyov1alpha1.EventReasonReconciled,
 		fmt.Sprintf("CostPolicy evaluated: %d pods, %d need rightsizing", totalPods, podsWithoutLimits))
 
-	aotmetrics.ReconcileTotal.WithLabelValues("costpolicy", "success").Inc()
-	aotmetrics.CostRightsizingGauge.WithLabelValues(policy.Name, policy.Namespace).Set(float64(podsWithoutLimits))
+	zelyometrics.ReconcileTotal.WithLabelValues("costpolicy", "success").Inc()
+	zelyometrics.CostRightsizingGauge.WithLabelValues(policy.Name, policy.Namespace).Set(float64(podsWithoutLimits))
 	return ctrl.Result{RequeueAfter: 10 * time.Minute}, nil
 }
 

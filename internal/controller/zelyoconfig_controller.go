@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -39,7 +40,7 @@ import (
 
 const (
 	// requeueIntervalConfig is the default requeue interval for config reconciliation.
-	requeueIntervalConfig = 5 * time.Minute
+	requeueIntervalConfig = 10 * time.Minute
 )
 
 // ZelyoConfigReconciler reconciles an ZelyoConfig object.
@@ -161,8 +162,11 @@ func (r *ZelyoConfigReconciler) reconcileLLMSecret(ctx context.Context, config *
 		return nil, ctrl.Result{RequeueAfter: requeueIntervalConfig}, nil
 	}
 
-	// Look up the secret in the operator's namespace (default to "zelyo-system").
-	operatorNamespace := "zelyo-system"
+	// Look up the secret in the operator's namespace.
+	operatorNamespace := os.Getenv("ZELYO_OPERATOR_NAMESPACE")
+	if operatorNamespace == "" {
+		operatorNamespace = "zelyo-system"
+	}
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{Name: llmSecretName, Namespace: operatorNamespace}
 	if err := r.Get(ctx, secretKey, secret); err != nil {
@@ -230,7 +234,46 @@ func (r *ZelyoConfigReconciler) reconcileRemediationEngine(ctx context.Context, 
 			log.Error(err, "Failed to initialize LLM client from ZelyoConfig")
 			r.Recorder.Event(config, corev1.EventTypeWarning, "LLMInitializationFailed",
 				fmt.Sprintf("Failed to initialize LLM client: %v", err))
+			config.Status.LLMKeyStatus = "Invalid"
+			conditions.MarkFalse(&config.Status.Conditions, zelyov1alpha1.ConditionLLMKeyVerified,
+				zelyov1alpha1.ReasonLLMKeyInvalid,
+				fmt.Sprintf("LLM client initialization failed: %v", err), config.Generation)
 		} else {
+			// ── LLM Key Verification Probe ──
+			// Send a minimal request to verify the API key works.
+			config.Status.LLMKeyStatus = "Pending"
+			probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			_, probeErr := llmClient.Complete(probeCtx, llm.Request{
+				Messages:  []llm.Message{{Role: llm.RoleUser, Content: "Reply with exactly: OK"}},
+				MaxTokens: 5,
+			})
+			if probeErr != nil {
+				log.Error(probeErr, "LLM key verification probe failed")
+				ns := os.Getenv("ZELYO_OPERATOR_NAMESPACE")
+				if ns == "" {
+					ns = "zelyo-system"
+				}
+				r.Recorder.Event(config, corev1.EventTypeWarning, "LLMKeyVerificationFailed",
+					fmt.Sprintf("LLM API key verification failed: %v. Verify your key with: kubectl get secret %s -n %s -o jsonpath='{.data.api-key}' | base64 -d",
+						probeErr, config.Spec.LLM.APIKeySecret, ns))
+				config.Status.LLMKeyStatus = "Invalid"
+				conditions.MarkFalse(&config.Status.Conditions, zelyov1alpha1.ConditionLLMKeyVerified,
+					zelyov1alpha1.ReasonLLMKeyInvalid,
+					fmt.Sprintf("API key probe failed: %v", probeErr), config.Generation)
+			} else {
+				now := metav1.Now()
+				config.Status.LLMKeyStatus = "Verified"
+				config.Status.LLMKeyLastVerified = &now
+				conditions.MarkTrue(&config.Status.Conditions, zelyov1alpha1.ConditionLLMKeyVerified,
+					zelyov1alpha1.ReasonLLMKeyVerified,
+					fmt.Sprintf("LLM API key verified for provider %q (model: %s)",
+						config.Spec.LLM.Provider, config.Spec.LLM.Model), config.Generation)
+				log.Info("LLM API key verified successfully",
+					"provider", llmCfg.Provider, "model", llmCfg.Model)
+			}
+
+			// Inject client regardless of probe result — the probe is informational.
 			r.RemediationEngine.SetLLMClient(llmClient)
 			log.Info("Successfully injected LLM client into remediation engine",
 				"provider", llmCfg.Provider, "model", llmCfg.Model)

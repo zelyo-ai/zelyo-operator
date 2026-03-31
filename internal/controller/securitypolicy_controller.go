@@ -37,7 +37,7 @@ import (
 	zelyov1alpha1 "github.com/zelyo-ai/zelyo-operator/api/v1alpha1"
 	"github.com/zelyo-ai/zelyo-operator/internal/conditions"
 	"github.com/zelyo-ai/zelyo-operator/internal/correlator"
-	aotmetrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
+	zelyometrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
 	"github.com/zelyo-ai/zelyo-operator/internal/notifier"
 	"github.com/zelyo-ai/zelyo-operator/internal/scanner"
 )
@@ -81,7 +81,7 @@ func (r *SecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	log := logf.FromContext(ctx)
 	start := time.Now()
 	defer func() {
-		aotmetrics.ReconcileDuration.WithLabelValues("securitypolicy").Observe(time.Since(start).Seconds())
+		zelyometrics.ReconcileDuration.WithLabelValues("securitypolicy").Observe(time.Since(start).Seconds())
 	}()
 
 	// Fetch the SecurityPolicy resource.
@@ -109,7 +109,7 @@ func (r *SecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if statusErr := r.Status().Update(ctx, policy); statusErr != nil {
 			return ctrl.Result{}, fmt.Errorf("updating status: %w", statusErr)
 		}
-		aotmetrics.ReconcileTotal.WithLabelValues("securitypolicy", "error").Inc()
+		zelyometrics.ReconcileTotal.WithLabelValues("securitypolicy", "error").Inc()
 		return ctrl.Result{RequeueAfter: requeueIntervalScan}, nil
 	}
 
@@ -223,12 +223,12 @@ func (r *SecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Record metrics.
-	aotmetrics.PolicyViolationsGauge.WithLabelValues(policy.Name, policy.Namespace, policy.Spec.Severity).Set(float64(len(allFindings)))
+	zelyometrics.PolicyViolationsGauge.WithLabelValues(policy.Name, policy.Namespace, policy.Spec.Severity).Set(float64(len(allFindings)))
 	for i := range allFindings {
 		f := &allFindings[i]
-		aotmetrics.ScanFindingsTotal.WithLabelValues("securitypolicy", f.Severity).Inc()
+		zelyometrics.ScanFindingsTotal.WithLabelValues("securitypolicy", f.Severity).Inc()
 	}
-	aotmetrics.ResourcesScannedTotal.WithLabelValues("securitypolicy").Add(float64(len(pods)))
+	zelyometrics.ResourcesScannedTotal.WithLabelValues("securitypolicy").Add(float64(len(pods)))
 
 	if err := r.Status().Update(ctx, policy); err != nil {
 		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
@@ -239,7 +239,7 @@ func (r *SecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		"violations", policy.Status.ViolationCount,
 		"podsScanned", len(pods))
 
-	aotmetrics.ReconcileTotal.WithLabelValues("securitypolicy", "success").Inc()
+	zelyometrics.ReconcileTotal.WithLabelValues("securitypolicy", "success").Inc()
 	return ctrl.Result{RequeueAfter: requeueIntervalScan}, nil
 }
 

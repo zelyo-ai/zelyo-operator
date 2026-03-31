@@ -38,7 +38,7 @@ import (
 	gitopscontroller "github.com/zelyo-ai/zelyo-operator/internal/gitops/controller"
 	"github.com/zelyo-ai/zelyo-operator/internal/gitops/discovery"
 	"github.com/zelyo-ai/zelyo-operator/internal/gitops/source"
-	aotmetrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
+	zelyometrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
 )
 
 // GitOpsRepositoryReconciler reconciles a GitOpsRepository object.
@@ -67,7 +67,7 @@ func (r *GitOpsRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	log := logf.FromContext(ctx)
 	start := time.Now()
 	defer func() {
-		aotmetrics.ReconcileDuration.WithLabelValues("gitopsrepository").Observe(time.Since(start).Seconds())
+		zelyometrics.ReconcileDuration.WithLabelValues("gitopsrepository").Observe(time.Since(start).Seconds())
 	}()
 
 	repo := &zelyov1alpha1.GitOpsRepository{}
@@ -99,7 +99,7 @@ func (r *GitOpsRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if err := r.Status().Update(ctx, repo); err != nil {
 			return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
 		}
-		aotmetrics.ReconcileTotal.WithLabelValues("gitopsrepository", "error").Inc()
+		zelyometrics.ReconcileTotal.WithLabelValues("gitopsrepository", "error").Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -137,7 +137,7 @@ func (r *GitOpsRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		requeueAfter = 5 * time.Minute
 	}
 
-	aotmetrics.ReconcileTotal.WithLabelValues("gitopsrepository", "success").Inc()
+	zelyometrics.ReconcileTotal.WithLabelValues("gitopsrepository", "success").Inc()
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
@@ -160,7 +160,7 @@ func (r *GitOpsRepositoryReconciler) validateAuthSecret(ctx context.Context, rep
 			if statusErr := r.Status().Update(ctx, repo); statusErr != nil {
 				return &ctrl.Result{}, fmt.Errorf("updating status: %w", statusErr)
 			}
-			aotmetrics.ReconcileTotal.WithLabelValues("gitopsrepository", "error").Inc()
+			zelyometrics.ReconcileTotal.WithLabelValues("gitopsrepository", "error").Inc()
 			result := ctrl.Result{RequeueAfter: 2 * time.Minute}
 			return &result, nil
 		}

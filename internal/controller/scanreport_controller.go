@@ -29,7 +29,7 @@ import (
 
 	zelyov1alpha1 "github.com/zelyo-ai/zelyo-operator/api/v1alpha1"
 	"github.com/zelyo-ai/zelyo-operator/internal/conditions"
-	aotmetrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
+	zelyometrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
 )
 
 // ScanReportReconciler reconciles a ScanReport object.
@@ -74,7 +74,7 @@ func (r *ScanReportReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err := r.Status().Update(ctx, report); err != nil {
 			return ctrl.Result{}, fmt.Errorf("updating ScanReport status: %w", err)
 		}
-		aotmetrics.ReconcileTotal.WithLabelValues("scanreport", "success").Inc()
+		zelyometrics.ReconcileTotal.WithLabelValues("scanreport", "success").Inc()
 	}
 
 	return ctrl.Result{}, nil
