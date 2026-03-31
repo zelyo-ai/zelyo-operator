@@ -35,7 +35,7 @@ import (
 	"github.com/zelyo-ai/zelyo-operator/internal/conditions"
 	"github.com/zelyo-ai/zelyo-operator/internal/correlator"
 	"github.com/zelyo-ai/zelyo-operator/internal/github"
-	aotmetrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
+	zelyometrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
 	"github.com/zelyo-ai/zelyo-operator/internal/remediation"
 	"github.com/zelyo-ai/zelyo-operator/internal/scanner"
 )
@@ -67,7 +67,7 @@ func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	log := logf.FromContext(ctx)
 	start := time.Now()
 	defer func() {
-		aotmetrics.ReconcileDuration.WithLabelValues("remediationpolicy").Observe(time.Since(start).Seconds())
+		zelyometrics.ReconcileDuration.WithLabelValues("remediationpolicy").Observe(time.Since(start).Seconds())
 	}()
 
 	policy := &zelyov1alpha1.RemediationPolicy{}
@@ -152,7 +152,7 @@ func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		fmt.Sprintf("RemediationPolicy reconciled (repo=%s, dryRun=%v, prsCreated=%d, severity>=%s)",
 			policy.Spec.GitOpsRepository, policy.Spec.DryRun, prsCreated, policy.Spec.SeverityFilter))
 
-	aotmetrics.ReconcileTotal.WithLabelValues("remediationpolicy", "success").Inc()
+	zelyometrics.ReconcileTotal.WithLabelValues("remediationpolicy", "success").Inc()
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 

@@ -37,7 +37,7 @@ import (
 	zelyov1alpha1 "github.com/zelyo-ai/zelyo-operator/api/v1alpha1"
 	"github.com/zelyo-ai/zelyo-operator/internal/compliance"
 	"github.com/zelyo-ai/zelyo-operator/internal/conditions"
-	aotmetrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
+	zelyometrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
 	"github.com/zelyo-ai/zelyo-operator/internal/scanner"
 )
 
@@ -232,7 +232,7 @@ func (r *ClusterScanReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				compReport.Summary.Failed))
 	}
 
-	aotmetrics.CompliancePctGauge.WithLabelValues(string(compReport.Framework)).Set(compReport.Summary.CompliancePct)
+	zelyometrics.CompliancePctGauge.WithLabelValues(string(compReport.Framework)).Set(compReport.Summary.CompliancePct)
 
 	// ── Create ScanReport child resource ──
 	reportName := fmt.Sprintf("%s-%d", scan.Name, time.Now().Unix())
@@ -311,10 +311,10 @@ func (r *ClusterScanReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		"resourcesScanned", summary.ResourcesScanned)
 
 	// Record metrics.
-	aotmetrics.ClusterScanCompletedTotal.WithLabelValues(scan.Name, scan.Namespace).Inc()
-	aotmetrics.ClusterScanFindingsGauge.WithLabelValues(scan.Name, scan.Namespace).Set(float64(summary.TotalFindings))
-	aotmetrics.ResourcesScannedTotal.WithLabelValues("clusterscan").Add(float64(summary.ResourcesScanned))
-	aotmetrics.ReconcileTotal.WithLabelValues("clusterscan", "success").Inc()
+	zelyometrics.ClusterScanCompletedTotal.WithLabelValues(scan.Name, scan.Namespace).Inc()
+	zelyometrics.ClusterScanFindingsGauge.WithLabelValues(scan.Name, scan.Namespace).Set(float64(summary.TotalFindings))
+	zelyometrics.ResourcesScannedTotal.WithLabelValues("clusterscan").Add(float64(summary.ResourcesScanned))
+	zelyometrics.ReconcileTotal.WithLabelValues("clusterscan", "success").Inc()
 
 	return ctrl.Result{RequeueAfter: defaultScanInterval}, nil
 }

@@ -205,6 +205,16 @@ type ZelyoConfigStatus struct {
 	// +optional
 	ActiveMode string `json:"activeMode,omitempty"`
 
+	// llmKeyStatus indicates whether the LLM API key has been verified.
+	// Values: Pending, Verified, Invalid, RateLimited.
+	// +kubebuilder:validation:Enum=Pending;Verified;Invalid;RateLimited
+	// +optional
+	LLMKeyStatus string `json:"llmKeyStatus,omitempty"`
+
+	// llmKeyLastVerified is when the LLM API key was last successfully verified.
+	// +optional
+	LLMKeyLastVerified *metav1.Time `json:"llmKeyLastVerified,omitempty"`
+
 	// tokenUsage tracks current LLM token consumption.
 	// +optional
 	TokenUsage TokenUsageStatus `json:"tokenUsage,omitempty"`
@@ -241,6 +251,7 @@ type TokenUsageStatus struct {
 // +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.mode`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="LLM Provider",type=string,JSONPath=`.spec.llm.provider`
+// +kubebuilder:printcolumn:name="LLM Key",type=string,JSONPath=`.status.llmKeyStatus`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ZelyoConfig is the Schema for the zelyoconfigs API.

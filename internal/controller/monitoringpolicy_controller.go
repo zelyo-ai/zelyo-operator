@@ -35,7 +35,7 @@ import (
 	"github.com/zelyo-ai/zelyo-operator/internal/anomaly"
 	"github.com/zelyo-ai/zelyo-operator/internal/conditions"
 	"github.com/zelyo-ai/zelyo-operator/internal/correlator"
-	aotmetrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
+	zelyometrics "github.com/zelyo-ai/zelyo-operator/internal/metrics"
 )
 
 // MonitoringPolicyReconciler reconciles a MonitoringPolicy object.
@@ -59,7 +59,7 @@ func (r *MonitoringPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	log := logf.FromContext(ctx)
 	start := time.Now()
 	defer func() {
-		aotmetrics.ReconcileDuration.WithLabelValues("monitoringpolicy").Observe(time.Since(start).Seconds())
+		zelyometrics.ReconcileDuration.WithLabelValues("monitoringpolicy").Observe(time.Since(start).Seconds())
 	}()
 
 	policy := &zelyov1alpha1.MonitoringPolicy{}
@@ -119,7 +119,7 @@ func (r *MonitoringPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	r.Recorder.Event(policy, corev1.EventTypeNormal, zelyov1alpha1.EventReasonReconciled,
 		fmt.Sprintf("MonitoringPolicy reconciled (event types: %v)", policy.Spec.EventFilters.Types))
 
-	aotmetrics.ReconcileTotal.WithLabelValues("monitoringpolicy", "success").Inc()
+	zelyometrics.ReconcileTotal.WithLabelValues("monitoringpolicy", "success").Inc()
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 

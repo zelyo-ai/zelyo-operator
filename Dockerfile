@@ -14,17 +14,18 @@ COPY go.sum go.sum
 # Cache deps before building and copying source so that we don't need to re-download
 RUN go mod download
 
+# Install ca-certificates for TLS
+RUN apk add --no-cache ca-certificates
+
 # Copy the Go source (relies on .dockerignore to filter)
 COPY . .
 
 # Build with version info injected via ldflags
 # CGO_ENABLED=0 produces a fully static binary — no libc/OS dependencies
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
-    -ldflags="-s -w \
-    -X github.com/zelyo-ai/zelyo/internal/version.Version=${VERSION} \
-    -X github.com/zelyo-ai/zelyo/internal/version.Commit=${COMMIT} \
-    -X github.com/zelyo-ai/zelyo/internal/version.Date=${BUILD_DATE}" \
-    -a -o manager cmd/main.go
+    -ldflags="-s -w -X 'github.com/zelyo-ai/zelyo-operator/internal/version.Version=${VERSION}' -X 'github.com/zelyo-ai/zelyo-operator/internal/version.Commit=${COMMIT}' -X 'github.com/zelyo-ai/zelyo-operator/internal/version.Date=${BUILD_DATE}'" \
+    -a -o manager ./cmd/main.go
+
 
 # ── Final stage: scratch (zero OS packages = zero OS CVEs) ──────────────────
 # Since the binary is statically compiled (CGO_ENABLED=0), we don't need any

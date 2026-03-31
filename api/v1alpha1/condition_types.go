@@ -92,6 +92,10 @@ const (
 
 	// ConditionNotificationDelivered indicates whether the last notification was delivered.
 	ConditionNotificationDelivered = "NotificationDelivered"
+
+	// ConditionLLMKeyVerified indicates whether the LLM API key has been verified
+	// by a live probe call to the provider.
+	ConditionLLMKeyVerified = "LLMKeyVerified"
 )
 
 // Condition reason constants — these explain WHY a condition is True/False.
@@ -168,6 +172,12 @@ const (
 
 	// ReasonManifestsParsed indicates manifests were successfully parsed.
 	ReasonManifestsParsed = "ManifestsParsed"
+
+	// ReasonLLMKeyVerified indicates the LLM API key was verified by a live probe.
+	ReasonLLMKeyVerified = "LLMKeyVerified"
+
+	// ReasonLLMKeyInvalid indicates the LLM API key probe failed.
+	ReasonLLMKeyInvalid = "LLMKeyInvalid"
 )
 
 // Event reason constants for Kubernetes event recording.

@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strconv"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -40,6 +41,7 @@ import (
 	"github.com/zelyo-ai/zelyo-operator/internal/anomaly"
 	"github.com/zelyo-ai/zelyo-operator/internal/controller"
 	"github.com/zelyo-ai/zelyo-operator/internal/correlator"
+	"github.com/zelyo-ai/zelyo-operator/internal/dashboard"
 	gitopscontroller "github.com/zelyo-ai/zelyo-operator/internal/gitops/controller"
 	"github.com/zelyo-ai/zelyo-operator/internal/gitops/source"
 	_ "github.com/zelyo-ai/zelyo-operator/internal/metrics" // Auto-register custom Prometheus metrics.
@@ -311,6 +313,28 @@ func main() {
 		setupLog.Error(err, "Failed to set up health check")
 		os.Exit(1)
 	}
+	// ── Dashboard Server ──
+	if os.Getenv("ZELYO_OPERATOR_DASHBOARD_ENABLED") != "false" {
+		dashPort := 8080
+		if p, err := strconv.Atoi(os.Getenv("ZELYO_OPERATOR_DASHBOARD_PORT")); err == nil && p > 0 {
+			dashPort = p
+		}
+		dashBasePath := os.Getenv("ZELYO_OPERATOR_DASHBOARD_BASE_PATH")
+		if dashBasePath == "" {
+			dashBasePath = "/"
+		}
+		dashSrv := dashboard.NewServer(&dashboard.Config{
+			Port:     dashPort,
+			BasePath: dashBasePath,
+			Enabled:  true,
+		}, ctrl.Log.WithName("dashboard"))
+		if err := mgr.Add(dashSrv); err != nil {
+			setupLog.Error(err, "Failed to add dashboard server to manager")
+			os.Exit(1)
+		}
+		setupLog.Info("Dashboard server registered", "port", dashPort, "basePath", dashBasePath)
+	}
+
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "Failed to set up ready check")
 		os.Exit(1)

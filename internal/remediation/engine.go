@@ -128,11 +128,15 @@ func (e *Engine) getGitOpsEngine(owner, repo string) gitops.Engine {
 
 // SetLLMClient updates the LLM client used by the engine.
 func (e *Engine) SetLLMClient(client llm.Client) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.llmClient = client
 }
 
 // SetGitOpsEngine updates the GitOps engine used by the engine.
 func (e *Engine) SetGitOpsEngine(ge gitops.Engine) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.gitopsEngine = ge
 }
 

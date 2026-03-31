@@ -160,7 +160,10 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	go func() {
-		if err := server.Shutdown(ctx); err != nil {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
 			s.log.Error(err, "Dashboard server shutdown error")
 		}
 	}()
@@ -168,3 +171,6 @@ func (s *Server) Start(ctx context.Context) error {
 	s.log.Info("Starting dashboard", "port", s.port, "basePath", s.basePath)
 	return server.ListenAndServe()
 }
+
+// NeedLeaderElection returns false so the dashboard runs on all replicas.
+func (s *Server) NeedLeaderElection() bool { return false }

@@ -1,0 +1,47 @@
+{{- if .Values.config.llm.provider }}
+apiVersion: zelyo.ai/v1alpha1
+kind: ZelyoConfig
+metadata:
+  name: zelyo
+  labels:
+    {{- include "zelyo-operator.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "10"
+spec:
+  mode: {{ .Values.config.mode | default "audit" }}
+  llm:
+    provider: {{ .Values.config.llm.provider }}
+    model: {{ .Values.config.llm.model | quote }}
+    apiKeySecret: {{ .Values.config.llm.apiKeySecret | quote }}
+    {{- if .Values.config.llm.endpoint }}
+    endpoint: {{ .Values.config.llm.endpoint | quote }}
+    {{- end }}
+    {{- if .Values.config.llm.temperature }}
+    temperature: {{ .Values.config.llm.temperature }}
+    {{- end }}
+    maxTokensPerRequest: {{ .Values.config.llm.maxTokensPerRequest | default 4096 }}
+  dashboard:
+    enabled: {{ .Values.config.dashboard.enabled | default true }}
+    port: {{ .Values.config.dashboard.port | default 8080 }}
+    basePath: {{ .Values.config.dashboard.basePath | default "/" | quote }}
+  tokenBudget:
+    hourlyTokenLimit: {{ .Values.config.tokenBudget.hourlyTokenLimit | default 50000 }}
+    dailyTokenLimit: {{ .Values.config.tokenBudget.dailyTokenLimit | default 500000 }}
+    monthlyTokenLimit: {{ .Values.config.tokenBudget.monthlyTokenLimit | default 10000000 }}
+    alertThresholdPercent: {{ .Values.config.tokenBudget.alertThresholdPercent | default 80 }}
+    enableCaching: {{ .Values.config.tokenBudget.enableCaching | default true }}
+    batchingEnabled: {{ .Values.config.tokenBudget.batchingEnabled | default true }}
+  {{- if .Values.config.github.enabled }}
+  github:
+    appID: {{ .Values.config.github.appID }}
+    installationID: {{ .Values.config.github.installationID }}
+    privateKeySecret: {{ .Values.config.github.privateKeySecret | quote }}
+  {{- end }}
+  telemetry:
+    prometheusEnabled: {{ .Values.config.telemetry.prometheusEnabled | default true }}
+    otelEnabled: {{ .Values.config.telemetry.otelEnabled | default false }}
+    {{- if .Values.config.telemetry.otelEndpoint }}
+    otelEndpoint: {{ .Values.config.telemetry.otelEndpoint | quote }}
+    {{- end }}
+{{- end }}
