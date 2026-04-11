@@ -1,0 +1,87 @@
+{{- if .Values.securityPolicies.enabled }}
+{{- /*
+  Environment-based SecurityPolicy CRs.
+  Each enabled environment creates one SecurityPolicy with rules determined by its profile.
+*/ -}}
+{{- range $envName, $env := .Values.securityPolicies.environments }}
+{{- if $env.enabled }}
+{{- $profile := include "zelyo-policies.resolveProfile" (dict "envProfile" $env.profile "globalProfile" $.Values.global.profile) }}
+---
+apiVersion: zelyo.ai/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ $envName }}
+  namespace: {{ include "zelyo-policies.namespace" $ }}
+  labels:
+    {{- include "zelyo-policies.labels" $ | nindent 4 }}
+    zelyo.ai/environment: {{ $envName }}
+    zelyo.ai/profile: {{ $profile }}
+  {{- with $.Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  severity: {{ include "zelyo-policies.profileSeverity" $profile | trim }}
+  match:
+    {{- if $env.namespaces }}
+    namespaces:
+      {{- toYaml $env.namespaces | nindent 6 }}
+    {{- end }}
+    {{- if $env.excludeNamespaces }}
+    excludeNamespaces:
+      {{- toYaml $env.excludeNamespaces | nindent 6 }}
+    {{- end }}
+  rules:
+    {{- include "zelyo-policies.profileRules" $profile | nindent 4 }}
+  autoRemediate: {{ $env.autoRemediate | default false }}
+  {{- if $env.schedule }}
+  schedule: {{ $env.schedule | quote }}
+  {{- end }}
+  {{- if $env.notificationChannels }}
+  notificationChannels:
+    {{- toYaml $env.notificationChannels | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- /*
+  Custom SecurityPolicy CRs — fully user-defined.
+*/ -}}
+{{- range .Values.securityPolicies.custom }}
+---
+apiVersion: zelyo.ai/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "zelyo-policies.namespace" $ }}
+  labels:
+    {{- include "zelyo-policies.labels" $ | nindent 4 }}
+    zelyo.ai/policy-type: custom
+  {{- with $.Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  severity: {{ .severity | default "medium" }}
+  match:
+    {{- if .namespaces }}
+    namespaces:
+      {{- toYaml .namespaces | nindent 6 }}
+    {{- end }}
+    {{- if .excludeNamespaces }}
+    excludeNamespaces:
+      {{- toYaml .excludeNamespaces | nindent 6 }}
+    {{- end }}
+  rules:
+    {{- toYaml .rules | nindent 4 }}
+  {{- if .autoRemediate }}
+  autoRemediate: {{ .autoRemediate }}
+  {{- end }}
+  {{- if .schedule }}
+  schedule: {{ .schedule | quote }}
+  {{- end }}
+  {{- if .notificationChannels }}
+  notificationChannels:
+    {{- toYaml .notificationChannels | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

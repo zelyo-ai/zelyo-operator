@@ -1,0 +1,34 @@
+{{- if and .Values.remediation.enabled .Values.gitops.enabled .Values.remediation.gitOpsRepository }}
+apiVersion: zelyo.ai/v1alpha1
+kind: RemediationPolicy
+metadata:
+  name: default
+  namespace: {{ include "zelyo-policies.namespace" . }}
+  labels:
+    {{- include "zelyo-policies.labels" . | nindent 4 }}
+  {{- with .Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  gitOpsRepository: {{ .Values.remediation.gitOpsRepository }}
+  severityFilter: {{ .Values.remediation.severityFilter | default "high" }}
+  dryRun: {{ .Values.remediation.dryRun }}
+  maxConcurrentPRs: {{ .Values.remediation.maxConcurrentPRs | default 3 }}
+  autoMerge: {{ .Values.remediation.autoMerge | default false }}
+  {{- if .Values.remediation.targetPolicies }}
+  targetPolicies:
+    {{- toYaml .Values.remediation.targetPolicies | nindent 4 }}
+  {{- end }}
+  prTemplate:
+    titlePrefix: {{ .Values.remediation.prTemplate.titlePrefix | default "[Zelyo Auto-Fix]" | quote }}
+    {{- if .Values.remediation.prTemplate.labels }}
+    labels:
+      {{- toYaml .Values.remediation.prTemplate.labels | nindent 6 }}
+    {{- end }}
+    {{- if .Values.remediation.prTemplate.assignees }}
+    assignees:
+      {{- toYaml .Values.remediation.prTemplate.assignees | nindent 6 }}
+    {{- end }}
+    branchPrefix: {{ .Values.remediation.prTemplate.branchPrefix | default "zelyo/fix-" | quote }}
+{{- end }}

@@ -1,0 +1,36 @@
+{{- if .Values.costPolicy.enabled }}
+apiVersion: zelyo.ai/v1alpha1
+kind: CostPolicy
+metadata:
+  name: default
+  namespace: {{ include "zelyo-policies.namespace" . }}
+  labels:
+    {{- include "zelyo-policies.labels" . | nindent 4 }}
+  {{- with .Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.costPolicy.targetNamespaces }}
+  targetNamespaces:
+    {{- toYaml .Values.costPolicy.targetNamespaces | nindent 4 }}
+  {{- end }}
+  resizeStrategy: {{ .Values.costPolicy.resizeStrategy | default "conservative" }}
+  idleDetection:
+    enabled: {{ .Values.costPolicy.idleDetection.enabled }}
+    cpuThresholdPercent: {{ .Values.costPolicy.idleDetection.cpuThresholdPercent }}
+    memoryThresholdPercent: {{ .Values.costPolicy.idleDetection.memoryThresholdPercent }}
+    idleDurationMinutes: {{ .Values.costPolicy.idleDetection.idleDurationMinutes }}
+  budgetLimits:
+    {{- if .Values.costPolicy.budgetLimits.dailyBudgetUSD }}
+    dailyBudgetUSD: {{ .Values.costPolicy.budgetLimits.dailyBudgetUSD | quote }}
+    {{- end }}
+    {{- if .Values.costPolicy.budgetLimits.monthlyBudgetUSD }}
+    monthlyBudgetUSD: {{ .Values.costPolicy.budgetLimits.monthlyBudgetUSD | quote }}
+    {{- end }}
+    costIncreaseThresholdPercent: {{ .Values.costPolicy.budgetLimits.costIncreaseThresholdPercent }}
+  {{- if .Values.costPolicy.notificationChannels }}
+  notificationChannels:
+    {{- toYaml .Values.costPolicy.notificationChannels | nindent 4 }}
+  {{- end }}
+{{- end }}

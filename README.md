@@ -107,9 +107,16 @@ kubectl create secret generic zelyo-llm \
   --namespace zelyo-system \
   --from-literal=api-key=<YOUR_API_KEY>
 
-# 4. Verify
+# 4. Deploy default security policies
+helm install zelyo-policies oci://ghcr.io/zelyo-ai/charts/zelyo-policies \
+  --namespace zelyo-system
+
+# 5. Verify
 kubectl get pods -n zelyo-system
+kubectl get securitypolicies,clusterscans,monitoringpolicies -n zelyo-system
 ```
+
+Step 4 deploys the `zelyo-policies` chart with production-ready defaults: 3 tiered SecurityPolicies (production/staging/default), nightly + weekly ClusterScans, MonitoringPolicy with anomaly detection, and CIS compliance evaluation. Override the profile with `--set global.profile=strict` for regulated environments, or enable additional compliance frameworks with `--set compliance.presets.soc2=true`.
 
 Supported LLM providers: OpenRouter, OpenAI, Anthropic, Azure OpenAI, Ollama.
 

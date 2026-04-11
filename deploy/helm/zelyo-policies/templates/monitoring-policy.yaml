@@ -1,0 +1,45 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: zelyo.ai/v1alpha1
+kind: MonitoringPolicy
+metadata:
+  name: default
+  namespace: {{ include "zelyo-policies.namespace" . }}
+  labels:
+    {{- include "zelyo-policies.labels" . | nindent 4 }}
+  {{- with .Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.monitoring.targetNamespaces }}
+  targetNamespaces:
+    {{- toYaml .Values.monitoring.targetNamespaces | nindent 4 }}
+  {{- end }}
+  {{- if .Values.monitoring.notificationChannels }}
+  notificationChannels:
+    {{- toYaml .Values.monitoring.notificationChannels | nindent 4 }}
+  {{- end }}
+  eventFilters:
+    types:
+      {{- toYaml .Values.monitoring.eventFilters.types | nindent 6 }}
+    {{- if .Values.monitoring.eventFilters.reasons }}
+    reasons:
+      {{- toYaml .Values.monitoring.eventFilters.reasons | nindent 6 }}
+    {{- end }}
+  logMonitoring:
+    enabled: {{ .Values.monitoring.logMonitoring.enabled }}
+    {{- if .Values.monitoring.logMonitoring.patterns }}
+    patterns:
+      {{- toYaml .Values.monitoring.logMonitoring.patterns | nindent 6 }}
+    {{- end }}
+  nodeMonitoring:
+    enabled: {{ .Values.monitoring.nodeMonitoring.enabled }}
+    {{- if .Values.monitoring.nodeMonitoring.conditions }}
+    conditions:
+      {{- toYaml .Values.monitoring.nodeMonitoring.conditions | nindent 6 }}
+    {{- end }}
+  anomalyDetection:
+    enabled: {{ .Values.monitoring.anomalyDetection.enabled }}
+    baselineDurationHours: {{ .Values.monitoring.anomalyDetection.baselineDurationHours }}
+    sensitivityPercent: {{ .Values.monitoring.anomalyDetection.sensitivityPercent }}
+{{- end }}

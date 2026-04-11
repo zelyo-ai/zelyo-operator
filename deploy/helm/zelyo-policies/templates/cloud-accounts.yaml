@@ -1,0 +1,58 @@
+{{- $cloudPresetFrameworks := list }}
+{{- if .Values.compliance.presets.soc2 }}{{ $cloudPresetFrameworks = append $cloudPresetFrameworks "soc2" }}{{ end }}
+{{- if .Values.compliance.presets.pciDss }}{{ $cloudPresetFrameworks = append $cloudPresetFrameworks "pci-dss" }}{{ end }}
+{{- if .Values.compliance.presets.hipaa }}{{ $cloudPresetFrameworks = append $cloudPresetFrameworks "hipaa" }}{{ end }}
+{{- if .Values.compliance.presets.cis }}{{ $cloudPresetFrameworks = append $cloudPresetFrameworks "cis-aws" }}{{ end }}
+{{- if .Values.compliance.presets.nist }}{{ $cloudPresetFrameworks = append $cloudPresetFrameworks "nist-800-53" }}{{ end }}
+{{- if .Values.compliance.presets.iso27001 }}{{ $cloudPresetFrameworks = append $cloudPresetFrameworks "iso-27001" }}{{ end }}
+{{- range .Values.cloudAccounts }}
+---
+apiVersion: zelyo.ai/v1alpha1
+kind: CloudAccountConfig
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "zelyo-policies.namespace" $ }}
+  labels:
+    {{- include "zelyo-policies.labels" $ | nindent 4 }}
+    zelyo.ai/cloud-provider: {{ .provider }}
+  {{- with $.Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  provider: {{ .provider }}
+  accountID: {{ .accountID | quote }}
+  {{- if .regions }}
+  regions:
+    {{- toYaml .regions | nindent 4 }}
+  {{- end }}
+  credentials:
+    method: {{ .credentials.method }}
+    {{- if .credentials.roleARN }}
+    roleARN: {{ .credentials.roleARN | quote }}
+    {{- end }}
+    {{- if .credentials.secretRef }}
+    secretRef: {{ .credentials.secretRef }}
+    {{- end }}
+    {{- if .credentials.externalID }}
+    externalID: {{ .credentials.externalID | quote }}
+    {{- end }}
+    {{- if .credentials.serviceAccountName }}
+    serviceAccountName: {{ .credentials.serviceAccountName }}
+    {{- end }}
+  {{- if .scanCategories }}
+  scanCategories:
+    {{- toYaml .scanCategories | nindent 4 }}
+  {{- end }}
+  {{- $accountFrameworks := .complianceFrameworks | default list }}
+  {{- $mergedFrameworks := concat $accountFrameworks $cloudPresetFrameworks | uniq }}
+  {{- if $mergedFrameworks }}
+  complianceFrameworks:
+    {{- toYaml $mergedFrameworks | nindent 4 }}
+  {{- end }}
+  {{- if .schedule }}
+  schedule: {{ .schedule | quote }}
+  {{- end }}
+  historyLimit: {{ .historyLimit | default 10 }}
+  suspend: false
+{{- end }}

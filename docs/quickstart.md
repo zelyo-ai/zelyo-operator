@@ -100,6 +100,51 @@ Set `mode: protect` to enable automated GitOps PR creation (requires a `GitOpsRe
 
 ---
 
+## 7. Deploy Default Policies (Recommended)
+
+The `zelyo-policies` Helm chart deploys production-ready security policies covering all 56 scanners in one command:
+
+```bash
+helm install zelyo-policies oci://ghcr.io/zelyo-ai/charts/zelyo-policies \
+  --namespace zelyo-system
+```
+
+This creates:
+- **3 SecurityPolicies** — production (strict), staging (standard), default (standard) with per-environment namespace targeting
+- **2 ClusterScans** — nightly full scan + weekly compliance evaluation with CIS Kubernetes Benchmark
+- **1 MonitoringPolicy** — anomaly detection, warning events, log patterns for auth failures and secret exposure
+
+Override the security profile globally or per-environment:
+
+```bash
+# Strict profile for regulated environments
+helm install zelyo-policies oci://ghcr.io/zelyo-ai/charts/zelyo-policies \
+  --namespace zelyo-system \
+  --set global.profile=strict
+
+# Enable SOC 2 + HIPAA compliance evaluation
+helm install zelyo-policies oci://ghcr.io/zelyo-ai/charts/zelyo-policies \
+  --namespace zelyo-system \
+  --set compliance.presets.soc2=true \
+  --set compliance.presets.hipaa=true
+```
+
+| Profile | Severity Floor | Rules | Enforcement |
+|---|---|---|---|
+| `starter` | high | 4 core rules | warn only |
+| `standard` | medium | all 8 rules | enforce critical+high |
+| `strict` | low | all 8 rules | enforce all |
+
+Verify the deployed policies:
+
+```bash
+kubectl get securitypolicies,clusterscans,monitoringpolicies -n zelyo-system
+```
+
+If you prefer to create policies manually instead, skip this step and follow the sections below.
+
+---
+
 ## Run a Security Scan
 
 Deploy a deliberately insecure pod, then apply a SecurityPolicy to scan it:
@@ -418,6 +463,7 @@ kubectl port-forward -n zelyo-system svc/zelyo-operator 8080:8080
 ## Teardown
 
 ```bash
+helm uninstall zelyo-policies -n zelyo-system 2>/dev/null
 kubectl delete cloudaccountconfigs,securitypolicies,clusterscans,scanreports,costpolicies,monitoringpolicies,notificationchannels,remediationpolicies,gitopsrepositories --all -n zelyo-system
 kubectl delete zelyoconfigs --all
 helm uninstall zelyo-operator -n zelyo-system
