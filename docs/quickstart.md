@@ -1,30 +1,22 @@
 # Quickstart
 
-Deploy Zelyo Operator on a local cluster and run your first security scan in under 10 minutes.
+Get Zelyo Operator running on your Kubernetes cluster and scanning workloads in under 10 minutes.
 
 Zelyo Operator is an open-source CNAPP that detects security misconfigurations across Kubernetes and cloud infrastructure, correlates them with an LLM, and opens GitOps PRs to fix them.
 
 ## Prerequisites
 
-| Tool | Install |
-|---|---|
-| [Docker](https://docs.docker.com/get-docker/) | Required by k3d |
-| [k3d](https://k3d.io/) | `brew install k3d` |
-| [kubectl](https://kubernetes.io/docs/tasks/tools/) | `brew install kubectl` |
-| [Helm](https://helm.sh/docs/intro/install/) | `brew install helm` |
+- A running Kubernetes cluster (EKS, GKE, AKS, or any conformant distribution)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) configured and pointing at your cluster
+- [Helm](https://helm.sh/docs/intro/install/) 3.x
 
 ```bash
-docker --version && k3d --version && kubectl version --client && helm version
+kubectl cluster-info && helm version
 ```
 
-## 1. Create a Cluster
+---
 
-```bash
-k3d cluster delete zelyo 2>/dev/null; k3d cluster create zelyo
-kubectl get nodes
-```
-
-## 2. Install cert-manager
+## 1. Install cert-manager
 
 Required for webhook TLS certificates.
 
@@ -38,30 +30,21 @@ helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
 kubectl wait --for=condition=Ready pods --all -n cert-manager --timeout=120s
 ```
 
-## 3. Build and Load the Operator Image
-
-```bash
-make docker-build IMG=zelyo-operator:local
-k3d image import zelyo-operator:local -c zelyo
-```
-
-## 4. Install Zelyo Operator
+## 2. Install Zelyo Operator
 
 ```bash
 helm install zelyo-operator oci://ghcr.io/zelyo-ai/charts/zelyo-operator \
   --namespace zelyo-system \
   --create-namespace \
-  --set image.repository=zelyo-operator \
-  --set image.tag=local \
-  --set image.pullPolicy=IfNotPresent \
   --set config.llm.provider=openrouter \
   --set config.llm.model=anthropic/claude-sonnet-4-20250514 \
+  --set config.llm.apiKeySecret=zelyo-llm \
   --set webhook.certManager.enabled=true
 
 kubectl get pods -n zelyo-system
 ```
 
-## 5. Add Your LLM API Key
+## 3. Add Your LLM API Key
 
 Get a key from [openrouter.ai/keys](https://openrouter.ai/keys) (or any supported provider -- see table below), then:
 
@@ -77,30 +60,9 @@ kubectl create secret generic zelyo-llm \
 | OpenAI | `openai` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | Anthropic | `anthropic` | [console.anthropic.com](https://console.anthropic.com) |
 | Azure OpenAI | `azure-openai` | [Azure Portal](https://portal.azure.com) |
-| Ollama (local) | `ollama` | [ollama.ai](https://ollama.ai) |
+| Ollama (self-hosted) | `ollama` | [ollama.ai](https://ollama.ai) |
 
-## 6. Activate the Agent
-
-```bash
-kubectl apply -f - <<'EOF'
-apiVersion: zelyo.ai/v1alpha1
-kind: ZelyoConfig
-metadata:
-  name: default
-spec:
-  mode: audit
-  llm:
-    provider: openrouter
-    model: "anthropic/claude-sonnet-4-20250514"
-    apiKeySecret: zelyo-llm
-EOF
-```
-
-Set `mode: protect` to enable automated GitOps PR creation (requires a `GitOpsRepository` -- see below).
-
----
-
-## 7. Deploy Default Policies (Recommended)
+## 4. Deploy Default Policies (Recommended)
 
 The `zelyo-policies` Helm chart deploys production-ready security policies covering all 56 scanners in one command:
 
@@ -110,9 +72,9 @@ helm install zelyo-policies oci://ghcr.io/zelyo-ai/charts/zelyo-policies \
 ```
 
 This creates:
-- **3 SecurityPolicies** — production (strict), staging (standard), default (standard) with per-environment namespace targeting
-- **2 ClusterScans** — nightly full scan + weekly compliance evaluation with CIS Kubernetes Benchmark
-- **1 MonitoringPolicy** — anomaly detection, warning events, log patterns for auth failures and secret exposure
+- **3 SecurityPolicies** -- production (strict), staging (standard), default (standard) with per-environment namespace targeting
+- **2 ClusterScans** -- nightly full scan + weekly compliance evaluation with CIS Kubernetes Benchmark
+- **1 MonitoringPolicy** -- anomaly detection, warning events, log patterns for auth failures and secret exposure
 
 Override the security profile globally or per-environment:
 
@@ -135,24 +97,23 @@ helm install zelyo-policies oci://ghcr.io/zelyo-ai/charts/zelyo-policies \
 | `standard` | medium | all 8 rules | enforce critical+high |
 | `strict` | low | all 8 rules | enforce all |
 
-Verify the deployed policies:
+Verify:
 
 ```bash
 kubectl get securitypolicies,clusterscans,monitoringpolicies -n zelyo-system
 ```
 
-If you prefer to create policies manually instead, skip this step and follow the sections below.
+If you prefer to create policies manually, skip this step and follow the sections below.
 
 ---
 
-## Run a Security Scan
+## Manual Policy Configuration
 
-Deploy a deliberately insecure pod, then apply a SecurityPolicy to scan it:
+The sections below show how to create each policy type individually. If you installed `zelyo-policies` above, these are already deployed and you can skip to [Scan a Cloud Account](#scan-a-cloud-account).
 
-```bash
-kubectl run insecure-nginx --image=nginx:latest --restart=Never -n default
+### Create a SecurityPolicy
 
-kubectl apply -f - <<'EOF'
+```yaml
 apiVersion: zelyo.ai/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -161,10 +122,16 @@ metadata:
 spec:
   severity: medium
   match:
-    namespaces: ["default"]
+    namespaces: ["default", "production"]
   rules:
     - name: security-context
       type: container-security-context
+      enforce: true
+    - name: pod-security
+      type: pod-security
+      enforce: true
+    - name: privilege-escalation
+      type: privilege-escalation
       enforce: true
     - name: resource-limits
       type: resource-limits
@@ -172,12 +139,6 @@ spec:
     - name: image-pinning
       type: image-vulnerability
       enforce: false
-    - name: pod-security
-      type: pod-security
-      enforce: true
-    - name: privilege-escalation
-      type: privilege-escalation
-      enforce: true
     - name: secrets-exposure
       type: secrets-exposure
       enforce: false
@@ -187,26 +148,18 @@ spec:
     - name: rbac-audit
       type: rbac-audit
       enforce: false
-EOF
 ```
-
-Check results:
 
 ```bash
 kubectl get securitypolicies -n zelyo-system
 kubectl describe securitypolicy baseline -n zelyo-system
 ```
 
-The 8 Kubernetes scanner rule types are: `container-security-context`, `resource-limits`, `image-vulnerability`, `pod-security`, `privilege-escalation`, `secrets-exposure`, `network-policy`, `rbac-audit`. See [Scanner Reference](scanners.md) for what each checks.
+The 8 scanner rule types: `container-security-context`, `resource-limits`, `image-vulnerability`, `pod-security`, `privilege-escalation`, `secrets-exposure`, `network-policy`, `rbac-audit`. See [Scanner Reference](scanners.md) for details.
 
----
+### Schedule a Cluster Scan
 
-## Schedule a Cluster Scan
-
-A `ClusterScan` runs scanners on a cron schedule and creates `ScanReport` resources for audit history.
-
-```bash
-kubectl apply -f - <<'EOF'
+```yaml
 apiVersion: zelyo.ai/v1alpha1
 kind: ClusterScan
 metadata:
@@ -224,28 +177,24 @@ spec:
     - network-policy
     - rbac-audit
   scope:
-    namespaces: []
     excludeNamespaces: ["kube-system", "kube-public"]
+  complianceFrameworks: ["cis"]
   historyLimit: 30
-EOF
 ```
 
 ```bash
-kubectl get scanreports -n zelyo-system --watch
+kubectl get scanreports -n zelyo-system
 ```
-
-Set `schedule: "* * * * *"` to trigger immediately for testing.
 
 ---
 
 ## Scan a Cloud Account
 
-The `CloudAccountConfig` CRD onboards an AWS account for scanning across 48 cloud security checks.
+The `CloudAccountConfig` CRD onboards an AWS account for scanning across 48 cloud security checks in 6 categories.
 
 **IRSA (recommended for EKS):**
 
-```bash
-kubectl apply -f - <<'EOF'
+```yaml
 apiVersion: zelyo.ai/v1alpha1
 kind: CloudAccountConfig
 metadata:
@@ -258,37 +207,35 @@ spec:
   credentials:
     method: irsa
     roleARN: "arn:aws:iam::123456789012:role/ZelyoReadOnly"
-  scanCategories: ["cspm", "ciem", "network", "dspm"]
+  scanCategories: ["cspm", "ciem", "network", "dspm", "supply-chain", "cicd-pipeline"]
   complianceFrameworks: ["soc2", "pci-dss"]
+  schedule: "0 2 * * *"
   historyLimit: 10
-EOF
 ```
 
-**Static credentials (for local/non-EKS clusters):**
+**EKS Pod Identity:**
+
+```yaml
+spec:
+  credentials:
+    method: pod-identity
+    serviceAccountName: zelyo-operator
+```
+
+**Static credentials (non-EKS):**
 
 ```bash
 kubectl create secret generic aws-creds \
   --namespace zelyo-system \
-  --from-literal=aws-access-key-id=AKIAIOSFODNN7EXAMPLE \
-  --from-literal=aws-secret-access-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  --from-literal=aws-access-key-id=<ACCESS_KEY> \
+  --from-literal=aws-secret-access-key=<SECRET_KEY>
+```
 
-kubectl apply -f - <<'EOF'
-apiVersion: zelyo.ai/v1alpha1
-kind: CloudAccountConfig
-metadata:
-  name: aws-staging
-  namespace: zelyo-system
+```yaml
 spec:
-  provider: aws
-  accountID: "987654321098"
-  regions: ["us-east-1"]
   credentials:
     method: secret
     secretRef: aws-creds
-  scanCategories: ["cspm", "ciem"]
-  complianceFrameworks: ["cis-aws"]
-  schedule: "0 6 * * *"
-EOF
 ```
 
 Check results:
@@ -320,14 +267,15 @@ kubectl get scanreports -n zelyo-system -l zelyo.ai/scan-type=cloud
 
 ## Set Up Notifications
 
-Route alerts to Slack (also supports Teams, PagerDuty, Telegram, WhatsApp, webhooks, email).
+Route alerts to Slack, Teams, PagerDuty, Telegram, WhatsApp, webhooks, or email.
 
 ```bash
 kubectl create secret generic slack-token \
   --namespace zelyo-system \
   --from-literal=webhook-url=https://hooks.slack.com/services/T.../B.../xxx
+```
 
-kubectl apply -f - <<'EOF'
+```yaml
 apiVersion: zelyo.ai/v1alpha1
 kind: NotificationChannel
 metadata:
@@ -342,21 +290,26 @@ spec:
     aggregateSeconds: 60
   slack:
     channel: "#security-alerts"
-EOF
+```
 
-kubectl apply -f - <<'EOF'
+Reference notification channels in your MonitoringPolicy:
+
+```yaml
 apiVersion: zelyo.ai/v1alpha1
 kind: MonitoringPolicy
 metadata:
   name: production-monitoring
   namespace: zelyo-system
 spec:
-  targetNamespaces: ["default"]
+  targetNamespaces: ["production"]
   notificationChannels: ["slack-security"]
   eventFilters:
     types: ["Warning"]
     reasons: ["OOMKilled", "CrashLoopBackOff", "FailedScheduling"]
-EOF
+  anomalyDetection:
+    enabled: true
+    baselineDurationHours: 168
+    sensitivityPercent: 80
 ```
 
 ---
@@ -375,61 +328,56 @@ kubectl create secret generic github-creds \
 
 **2. Onboard your repo:**
 
-```bash
-kubectl apply -f - <<'EOF'
+```yaml
 apiVersion: zelyo.ai/v1alpha1
 kind: GitOpsRepository
 metadata:
   name: infra-repo
   namespace: zelyo-system
 spec:
-  url: https://github.com/YOUR_USERNAME/YOUR_REPO
+  url: https://github.com/YOUR_ORG/YOUR_REPO
   branch: main
-  paths: ["./"]
+  paths: ["clusters/production/"]
   provider: github
   authSecret: github-creds
   enableDriftDetection: true
-EOF
 ```
 
 **3. Create a remediation policy:**
 
-```bash
-kubectl apply -f - <<'EOF'
+```yaml
 apiVersion: zelyo.ai/v1alpha1
 kind: RemediationPolicy
 metadata:
   name: auto-fix
   namespace: zelyo-system
 spec:
-  targetPolicies: ["baseline"]
+  targetPolicies: []
   gitOpsRepository: infra-repo
   prTemplate:
     titlePrefix: "[Zelyo Auto-Fix]"
     labels: ["security", "automated"]
-    branchPrefix: "zelyo-operator/fix-"
+    branchPrefix: "zelyo/fix-"
   severityFilter: high
   maxConcurrentPRs: 3
   dryRun: false
   autoMerge: false
-EOF
 ```
 
-Set `dryRun: true` to preview what PRs would be created without actually opening them.
+Set `dryRun: true` to preview fix plans without opening PRs.
 
 ---
 
 ## Cost Optimization
 
-```bash
-kubectl apply -f - <<'EOF'
+```yaml
 apiVersion: zelyo.ai/v1alpha1
 kind: CostPolicy
 metadata:
-  name: optimize-default
+  name: optimize
   namespace: zelyo-system
 spec:
-  targetNamespaces: ["default"]
+  targetNamespaces: ["production", "staging"]
   resizeStrategy: conservative
   budgetLimits:
     monthlyBudgetUSD: "10000"
@@ -439,7 +387,7 @@ spec:
     cpuThresholdPercent: 5
     memoryThresholdPercent: 5
     idleDurationMinutes: 60
-EOF
+  notificationChannels: ["slack-security"]
 ```
 
 ---
@@ -453,9 +401,8 @@ kubectl logs -f deploy/zelyo-operator -n zelyo-system
 # All Zelyo resources at a glance
 kubectl get securitypolicies,clusterscans,scanreports,cloudaccountconfigs,costpolicies,monitoringpolicies,notificationchannels,remediationpolicies,gitopsrepositories,zelyoconfigs -A
 
-# Dashboard
+# Dashboard (port-forward or expose via Ingress)
 kubectl port-forward -n zelyo-system svc/zelyo-operator 8080:8080
-# Open http://localhost:8080
 ```
 
 ---
@@ -464,9 +411,6 @@ kubectl port-forward -n zelyo-system svc/zelyo-operator 8080:8080
 
 ```bash
 helm uninstall zelyo-policies -n zelyo-system 2>/dev/null
-kubectl delete cloudaccountconfigs,securitypolicies,clusterscans,scanreports,costpolicies,monitoringpolicies,notificationchannels,remediationpolicies,gitopsrepositories --all -n zelyo-system
-kubectl delete zelyoconfigs --all
 helm uninstall zelyo-operator -n zelyo-system
 helm uninstall cert-manager -n cert-manager
-k3d cluster delete zelyo
 ```
