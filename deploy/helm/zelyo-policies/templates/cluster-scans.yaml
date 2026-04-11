@@ -1,0 +1,134 @@
+{{- if .Values.clusterScans.enabled }}
+{{- /*
+  Build the preset compliance frameworks list once for reuse.
+*/ -}}
+{{- $presetFrameworks := list }}
+{{- if .Values.compliance.presets.cis }}{{ $presetFrameworks = append $presetFrameworks "cis" }}{{ end }}
+{{- if .Values.compliance.presets.soc2 }}{{ $presetFrameworks = append $presetFrameworks "soc2" }}{{ end }}
+{{- if .Values.compliance.presets.pciDss }}{{ $presetFrameworks = append $presetFrameworks "pci-dss" }}{{ end }}
+{{- if .Values.compliance.presets.hipaa }}{{ $presetFrameworks = append $presetFrameworks "hipaa" }}{{ end }}
+{{- if .Values.compliance.presets.nist }}{{ $presetFrameworks = append $presetFrameworks "nist-800-53" }}{{ end }}
+{{- if .Values.compliance.presets.iso27001 }}{{ $presetFrameworks = append $presetFrameworks "iso-27001" }}{{ end }}
+{{- /*
+  Nightly ClusterScan — full scan every night.
+*/ -}}
+{{- if .Values.clusterScans.nightly.enabled }}
+---
+apiVersion: zelyo.ai/v1alpha1
+kind: ClusterScan
+metadata:
+  name: nightly
+  namespace: {{ include "zelyo-policies.namespace" . }}
+  labels:
+    {{- include "zelyo-policies.labels" . | nindent 4 }}
+    zelyo.ai/scan-schedule: nightly
+  {{- with .Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.clusterScans.nightly.schedule | quote }}
+  {{- if .Values.clusterScans.nightly.scanners }}
+  scanners:
+    {{- toYaml .Values.clusterScans.nightly.scanners | nindent 4 }}
+  {{- else }}
+  scanners:
+    - container-security-context
+    - pod-security
+    - privilege-escalation
+    - resource-limits
+    - image-vulnerability
+    - secrets-exposure
+    - network-policy
+    - rbac-audit
+  {{- end }}
+  {{- if .Values.clusterScans.nightly.excludeNamespaces }}
+  scope:
+    excludeNamespaces:
+      {{- toYaml .Values.clusterScans.nightly.excludeNamespaces | nindent 6 }}
+  {{- end }}
+  {{- $nightlyFrameworks := .Values.clusterScans.nightly.complianceFrameworks | default list }}
+  {{- $mergedNightly := concat $nightlyFrameworks $presetFrameworks | uniq }}
+  {{- if $mergedNightly }}
+  complianceFrameworks:
+    {{- toYaml $mergedNightly | nindent 4 }}
+  {{- end }}
+  historyLimit: {{ .Values.clusterScans.nightly.historyLimit | default 30 }}
+  suspend: false
+{{- end }}
+{{- /*
+  Weekly ClusterScan — deep compliance-focused scan.
+*/ -}}
+{{- if .Values.clusterScans.weekly.enabled }}
+---
+apiVersion: zelyo.ai/v1alpha1
+kind: ClusterScan
+metadata:
+  name: weekly
+  namespace: {{ include "zelyo-policies.namespace" . }}
+  labels:
+    {{- include "zelyo-policies.labels" . | nindent 4 }}
+    zelyo.ai/scan-schedule: weekly
+  {{- with .Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.clusterScans.weekly.schedule | quote }}
+  {{- if .Values.clusterScans.weekly.scanners }}
+  scanners:
+    {{- toYaml .Values.clusterScans.weekly.scanners | nindent 4 }}
+  {{- else }}
+  scanners:
+    - container-security-context
+    - pod-security
+    - privilege-escalation
+    - resource-limits
+    - image-vulnerability
+    - secrets-exposure
+    - network-policy
+    - rbac-audit
+  {{- end }}
+  {{- if .Values.clusterScans.weekly.excludeNamespaces }}
+  scope:
+    excludeNamespaces:
+      {{- toYaml .Values.clusterScans.weekly.excludeNamespaces | nindent 6 }}
+  {{- end }}
+  {{- $weeklyFrameworks := .Values.clusterScans.weekly.complianceFrameworks | default list }}
+  {{- $mergedWeekly := concat $weeklyFrameworks $presetFrameworks | uniq }}
+  {{- if $mergedWeekly }}
+  complianceFrameworks:
+    {{- toYaml $mergedWeekly | nindent 4 }}
+  {{- end }}
+  historyLimit: {{ .Values.clusterScans.weekly.historyLimit | default 12 }}
+  suspend: false
+{{- end }}
+{{- /*
+  Custom ClusterScan CRs.
+*/ -}}
+{{- range .Values.clusterScans.custom }}
+---
+apiVersion: zelyo.ai/v1alpha1
+kind: ClusterScan
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "zelyo-policies.namespace" $ }}
+  labels:
+    {{- include "zelyo-policies.labels" $ | nindent 4 }}
+    zelyo.ai/scan-schedule: custom
+  {{- with $.Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .schedule | quote }}
+  scanners:
+    {{- toYaml .scanners | nindent 4 }}
+  {{- if .complianceFrameworks }}
+  complianceFrameworks:
+    {{- toYaml .complianceFrameworks | nindent 4 }}
+  {{- end }}
+  historyLimit: {{ .historyLimit | default 10 }}
+  suspend: false
+{{- end }}
+{{- end }}

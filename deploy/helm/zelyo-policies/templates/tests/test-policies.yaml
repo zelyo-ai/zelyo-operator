@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "zelyo-policies.fullname" . }}-test
+  namespace: {{ include "zelyo-policies.namespace" . }}
+  labels:
+    {{- include "zelyo-policies.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test
+      image: bitnami/kubectl:1.31
+      command: ["sh", "-ec"]
+      args:
+        - |
+          echo "=== Verifying Zelyo policy CRs ==="
+
+          {{- if .Values.securityPolicies.enabled }}
+          echo "Checking SecurityPolicies..."
+          {{- range $name, $env := .Values.securityPolicies.environments }}
+          {{- if $env.enabled }}
+          kubectl get securitypolicy {{ $name }} -n {{ include "zelyo-policies.namespace" $ }} || exit 1
+          echo "  SecurityPolicy/{{ $name }} exists"
+          {{- end }}
+          {{- end }}
+          {{- end }}
+
+          {{- if .Values.clusterScans.enabled }}
+          echo "Checking ClusterScans..."
+          {{- if .Values.clusterScans.nightly.enabled }}
+          kubectl get clusterscan nightly -n {{ include "zelyo-policies.namespace" . }} || exit 1
+          echo "  ClusterScan/nightly exists"
+          {{- end }}
+          {{- if .Values.clusterScans.weekly.enabled }}
+          kubectl get clusterscan weekly -n {{ include "zelyo-policies.namespace" . }} || exit 1
+          echo "  ClusterScan/weekly exists"
+          {{- end }}
+          {{- end }}
+
+          {{- if .Values.monitoring.enabled }}
+          echo "Checking MonitoringPolicy..."
+          kubectl get monitoringpolicy default -n {{ include "zelyo-policies.namespace" . }} || exit 1
+          echo "  MonitoringPolicy/default exists"
+          {{- end }}
+
+          {{- if .Values.costPolicy.enabled }}
+          echo "Checking CostPolicy..."
+          kubectl get costpolicy default -n {{ include "zelyo-policies.namespace" . }} || exit 1
+          echo "  CostPolicy/default exists"
+          {{- end }}
+
+          echo "=== All policy CRs verified ==="

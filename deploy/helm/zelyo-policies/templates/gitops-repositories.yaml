@@ -1,0 +1,42 @@
+{{- if .Values.gitops.enabled }}
+{{- range .Values.gitops.repositories }}
+---
+apiVersion: zelyo.ai/v1alpha1
+kind: GitOpsRepository
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "zelyo-policies.namespace" $ }}
+  labels:
+    {{- include "zelyo-policies.labels" $ | nindent 4 }}
+    zelyo.ai/provider: {{ .provider | default "github" }}
+  {{- with $.Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  url: {{ .url | quote }}
+  branch: {{ .branch | default "main" }}
+  paths:
+    {{- toYaml .paths | nindent 4 }}
+  provider: {{ .provider | default "github" }}
+  authSecret: {{ .authSecret }}
+  enableDriftDetection: {{ .enableDriftDetection | default true }}
+  sourceType: {{ .sourceType | default "auto" }}
+  controllerType: {{ .controllerType | default "auto" }}
+  {{- if .pollIntervalSeconds }}
+  pollIntervalSeconds: {{ .pollIntervalSeconds }}
+  {{- end }}
+  {{- if .namespaceMapping }}
+  namespaceMapping:
+    {{- toYaml .namespaceMapping | nindent 4 }}
+  {{- end }}
+  {{- if .helm }}
+  helm:
+    {{- toYaml .helm | nindent 4 }}
+  {{- end }}
+  {{- if .kustomize }}
+  kustomize:
+    {{- toYaml .kustomize | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

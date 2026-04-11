@@ -1,0 +1,34 @@
+apiVersion: v2
+name: zelyo-policies
+description: >-
+  Opinionated security policies for Zelyo Operator.
+  Deploys production-ready defaults with tiered profiles (starter, standard, strict),
+  compliance presets (CIS, SOC 2, PCI-DSS, HIPAA), and per-environment namespace targeting.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">= 1.26.0-0"
+home: https://github.com/zelyo-ai/zelyo-operator
+icon: https://raw.githubusercontent.com/zelyo-ai/zelyo/main/docs/assets/icon.png
+sources:
+  - https://github.com/zelyo-ai/zelyo-operator
+maintainers:
+  - name: Zelyo AI
+    email: engineering@zelyo.ai
+    url: https://zelyo.ai
+keywords:
+  - security-policies
+  - compliance
+  - cnapp
+  - kubernetes-security
+  - cloud-security
+  - zelyo
+  - cspm
+  - devsecops
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://zelyo-ai.github.io/zelyo-operator/
+    - name: Operator Chart
+      url: https://artifacthub.io/packages/helm/zelyo-ai/zelyo-operator

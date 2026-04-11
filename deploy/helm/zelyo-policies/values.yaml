@@ -1,0 +1,312 @@
+# ============================================================================
+# Zelyo Policies — Opinionated Security Defaults for Zelyo Operator
+# ============================================================================
+# This chart deploys production-ready security policies that cover all 56
+# scanners (8 Kubernetes + 48 cloud) provided by Zelyo Operator.
+#
+# Quick start:
+#   helm install zelyo-policies ./zelyo-policies -n zelyo-system
+#
+# Override the security profile:
+#   helm install zelyo-policies ./zelyo-policies -n zelyo-system --set global.profile=strict
+#
+# Enable SOC 2 + HIPAA compliance:
+#   helm install zelyo-policies ./zelyo-policies -n zelyo-system \
+#     --set compliance.presets.soc2=true --set compliance.presets.hipaa=true
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Global settings
+# ---------------------------------------------------------------------------
+global:
+  # Target namespace for all policy CRs (must match the operator namespace).
+  namespace: zelyo-system
+
+  # Security profile applied to all environments unless overridden per-env.
+  #   starter  — 4 core rules, warn-only, severity >= high
+  #   standard — all 8 rules, enforce critical+high, severity >= medium
+  #   strict   — all 8 rules enforced, severity >= low
+  profile: standard
+
+  # Extra labels and annotations applied to every generated CR.
+  labels: {}
+  annotations: {}
+
+# ---------------------------------------------------------------------------
+# Security Policies — Kubernetes workload scanning
+# ---------------------------------------------------------------------------
+# Creates SecurityPolicy CRs targeting namespaces by environment tier.
+# Each environment can override the global profile.
+securityPolicies:
+  enabled: true
+
+  environments:
+    # -- Production: strictest scanning, frequent schedule
+    production:
+      enabled: true
+      profile: strict
+      namespaces: ["production"]
+      excludeNamespaces: []
+      autoRemediate: false
+      schedule: "*/30 * * * *"
+      notificationChannels: []
+
+    # -- Staging: balanced scanning
+    staging:
+      enabled: true
+      profile: standard
+      namespaces: ["staging"]
+      excludeNamespaces: []
+      autoRemediate: false
+      schedule: "0 */2 * * *"
+      notificationChannels: []
+
+    # -- Default: catch-all for remaining namespaces
+    default:
+      enabled: true
+      profile: ""                  # Uses global.profile
+      namespaces: []               # Empty = all namespaces
+      excludeNamespaces:
+        - kube-system
+        - kube-public
+        - kube-node-lease
+        - cert-manager
+        - zelyo-system
+      autoRemediate: false
+      schedule: "0 */6 * * *"
+      notificationChannels: []
+
+  # Fully custom SecurityPolicy CRs — escape hatch for advanced use cases.
+  # Each entry creates one SecurityPolicy CR with the exact spec you provide.
+  custom: []
+  # - name: pci-workloads
+  #   severity: critical
+  #   namespaces: ["payments"]
+  #   rules:
+  #     - name: secrets-exposure
+  #       type: secrets-exposure
+  #       enforce: true
+  #     - name: network-policy
+  #       type: network-policy
+  #       enforce: true
+
+# ---------------------------------------------------------------------------
+# Cluster Scans — scheduled full-cluster security evaluations
+# ---------------------------------------------------------------------------
+clusterScans:
+  enabled: true
+
+  # Nightly scan — runs all K8s scanners every night at 2 AM.
+  nightly:
+    enabled: true
+    schedule: "0 2 * * *"
+    scanners: []                   # Empty = all 8 scanners
+    excludeNamespaces:
+      - kube-system
+    complianceFrameworks: []       # Auto-populated from compliance.presets
+    historyLimit: 30
+
+  # Weekly deep scan — includes compliance framework evaluation.
+  weekly:
+    enabled: true
+    schedule: "0 3 * * 0"         # Sunday 3 AM
+    scanners: []
+    excludeNamespaces: []
+    complianceFrameworks: ["cis"]  # Always include CIS
+    historyLimit: 12
+
+  # Custom ClusterScan CRs.
+  custom: []
+  # - name: hourly-critical
+  #   schedule: "0 * * * *"
+  #   scanners: ["container-security-context", "privilege-escalation"]
+  #   complianceFrameworks: []
+  #   historyLimit: 24
+
+# ---------------------------------------------------------------------------
+# Compliance Presets — auto-configures frameworks across scans
+# ---------------------------------------------------------------------------
+# Enabled presets are merged into ClusterScan.complianceFrameworks and
+# CloudAccountConfig.complianceFrameworks automatically.
+compliance:
+  presets:
+    cis: true                      # CIS Kubernetes Benchmark
+    soc2: false                    # SOC 2 Type II
+    pciDss: false                  # PCI-DSS v4.0
+    hipaa: false                   # HIPAA
+    nist: false                    # NIST 800-53
+    iso27001: false                # ISO/IEC 27001
+
+# ---------------------------------------------------------------------------
+# Monitoring Policy — real-time event watching and anomaly detection
+# ---------------------------------------------------------------------------
+monitoring:
+  enabled: true
+
+  targetNamespaces: []             # Empty = all namespaces
+  excludeNamespaces:
+    - kube-system
+
+  anomalyDetection:
+    enabled: true
+    baselineDurationHours: 168     # 7-day learning window
+    sensitivityPercent: 80
+
+  eventFilters:
+    types: ["Warning"]
+    reasons:
+      - OOMKilled
+      - CrashLoopBackOff
+      - BackOff
+      - FailedScheduling
+      - Evicted
+      - Unhealthy
+
+  logMonitoring:
+    enabled: true
+    patterns:
+      - name: auth-failures
+        regex: "(?i)(authentication|authorization|access denied|forbidden|401|403)"
+        severity: high
+      - name: error-spikes
+        regex: "(?i)(panic|fatal|unhandled exception|segmentation fault)"
+        severity: critical
+      - name: secret-exposure
+        regex: "(?i)(password|api[_-]?key|secret[_-]?key|bearer|token)\\s*[:=]"
+        severity: critical
+
+  nodeMonitoring:
+    enabled: true
+    conditions:
+      - MemoryPressure
+      - DiskPressure
+      - PIDPressure
+      - NetworkUnavailable
+
+  notificationChannels: []
+
+# ---------------------------------------------------------------------------
+# Cost Policy — resource optimization and budget alerts
+# ---------------------------------------------------------------------------
+costPolicy:
+  enabled: false
+
+  targetNamespaces: []
+  resizeStrategy: conservative     # conservative | moderate | aggressive
+
+  idleDetection:
+    enabled: true
+    cpuThresholdPercent: 5
+    memoryThresholdPercent: 5
+    idleDurationMinutes: 60
+
+  budgetLimits:
+    dailyBudgetUSD: ""
+    monthlyBudgetUSD: ""
+    costIncreaseThresholdPercent: 20
+
+  notificationChannels: []
+
+# ---------------------------------------------------------------------------
+# Cloud Accounts — AWS (and future GCP/Azure) onboarding
+# ---------------------------------------------------------------------------
+# Each entry creates a CloudAccountConfig CR for multi-cloud scanning.
+cloudAccounts: []
+# - name: aws-prod
+#   provider: aws
+#   accountID: "123456789012"
+#   regions: ["us-east-1", "us-west-2"]
+#   credentials:
+#     method: irsa                 # irsa | pod-identity | workload-identity | secret
+#     roleARN: "arn:aws:iam::123456789012:role/ZelyoReadOnly"
+#     # secretRef: aws-creds       # For method: secret
+#     # externalID: ""             # For cross-account
+#   scanCategories: []             # Empty = all 6 categories (cspm, ciem, network, dspm, supply-chain, cicd-pipeline)
+#   complianceFrameworks: []       # Auto-populated from compliance.presets if empty
+#   schedule: "0 2 * * *"
+#   historyLimit: 10
+
+# ---------------------------------------------------------------------------
+# Notification Channels — alert routing
+# ---------------------------------------------------------------------------
+# Each entry creates a NotificationChannel CR.
+# Supports: slack, msteams, pagerduty, alertmanager, telegram, whatsapp, webhook, email
+notifications:
+  channels: []
+  # - name: slack-security
+  #   type: slack
+  #   credentialSecret: zelyo-slack
+  #   severityFilter: high
+  #   rateLimit:
+  #     maxPerHour: 60
+  #     aggregateSeconds: 30
+  #   slack:
+  #     channel: "#security-alerts"
+  #
+  # - name: pagerduty-critical
+  #   type: pagerduty
+  #   credentialSecret: zelyo-pagerduty
+  #   severityFilter: critical
+  #   pagerDuty:
+  #     routingKeyKey: routing-key
+  #     defaultSeverity: error
+  #
+  # - name: teams-all
+  #   type: msteams
+  #   credentialSecret: zelyo-teams
+  #   severityFilter: medium
+  #
+  # - name: webhook-siem
+  #   type: webhook
+  #   credentialSecret: zelyo-webhook
+  #   severityFilter: low
+  #   webhook:
+  #     url: https://siem.internal/api/v1/alerts
+  #     headers:
+  #       X-Source: zelyo-operator
+  #
+  # - name: email-compliance
+  #   type: email
+  #   credentialSecret: zelyo-smtp
+  #   severityFilter: high
+  #   email:
+  #     recipients: ["security@example.com"]
+  #     smtpHost: smtp.example.com
+  #     smtpPort: 587
+  #     fromAddress: zelyo@example.com
+
+# ---------------------------------------------------------------------------
+# GitOps Repositories — drift detection and PR submission
+# ---------------------------------------------------------------------------
+gitops:
+  enabled: false
+  repositories: []
+  # - name: infra-repo
+  #   url: https://github.com/my-org/k8s-manifests
+  #   branch: main
+  #   paths: ["clusters/production/"]
+  #   provider: github             # github | gitlab | bitbucket
+  #   authSecret: github-creds
+  #   enableDriftDetection: true
+  #   sourceType: auto             # auto | raw | helm | kustomize
+  #   controllerType: auto         # auto | none | argocd | flux
+  #   pollIntervalSeconds: 300
+
+# ---------------------------------------------------------------------------
+# Remediation Policy — automated GitOps PR creation (Protect mode)
+# ---------------------------------------------------------------------------
+remediation:
+  enabled: false
+  gitOpsRepository: ""             # Must reference a gitops.repositories[].name
+  severityFilter: high
+  dryRun: true                     # Safe default — preview fixes without PRs
+  maxConcurrentPRs: 3
+  autoMerge: false
+  targetPolicies: []               # Empty = all SecurityPolicies
+  prTemplate:
+    titlePrefix: "[Zelyo Auto-Fix]"
+    labels:
+      - security
+      - automated
+    assignees: []
+    branchPrefix: "zelyo/fix-"

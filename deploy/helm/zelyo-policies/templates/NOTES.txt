@@ -1,0 +1,70 @@
+
+=============================================================
+  Zelyo Policies deployed successfully!
+=============================================================
+
+Profile: {{ .Values.global.profile }}
+
+Security Policies:
+{{- if .Values.securityPolicies.enabled }}
+{{- range $name, $env := .Values.securityPolicies.environments }}
+{{- if $env.enabled }}
+  - {{ $name }} ({{ $env.profile | default $.Values.global.profile }} profile)
+{{- end }}
+{{- end }}
+{{- range .Values.securityPolicies.custom }}
+  - {{ .name }} (custom)
+{{- end }}
+{{- else }}
+  (disabled)
+{{- end }}
+
+Cluster Scans:
+{{- if .Values.clusterScans.enabled }}
+{{- if .Values.clusterScans.nightly.enabled }}
+  - nightly  ({{ .Values.clusterScans.nightly.schedule }})
+{{- end }}
+{{- if .Values.clusterScans.weekly.enabled }}
+  - weekly   ({{ .Values.clusterScans.weekly.schedule }})
+{{- end }}
+{{- range .Values.clusterScans.custom }}
+  - {{ .name }}   ({{ .schedule }})
+{{- end }}
+{{- else }}
+  (disabled)
+{{- end }}
+
+Compliance Frameworks:
+{{- if .Values.compliance.presets.cis }}  CIS Kubernetes{{ end }}
+{{- if .Values.compliance.presets.soc2 }}  SOC 2{{ end }}
+{{- if .Values.compliance.presets.pciDss }}  PCI-DSS{{ end }}
+{{- if .Values.compliance.presets.hipaa }}  HIPAA{{ end }}
+{{- if .Values.compliance.presets.nist }}  NIST 800-53{{ end }}
+{{- if .Values.compliance.presets.iso27001 }}  ISO 27001{{ end }}
+
+Monitoring:       {{ if .Values.monitoring.enabled }}enabled{{ else }}disabled{{ end }}
+Cost Optimization:{{ if .Values.costPolicy.enabled }} enabled{{ else }} disabled{{ end }}
+Cloud Accounts:   {{ len .Values.cloudAccounts }} onboarded
+Notifications:    {{ len .Values.notifications.channels }} channels
+GitOps:           {{ if .Values.gitops.enabled }}enabled ({{ len .Values.gitops.repositories }} repos){{ else }}disabled{{ end }}
+Remediation:      {{ if .Values.remediation.enabled }}enabled (dryRun={{ .Values.remediation.dryRun }}){{ else }}disabled{{ end }}
+
+-------------------------------------------------------------
+Verify:
+  kubectl get securitypolicies,clusterscans,monitoringpolicies,costpolicies,cloudaccountconfigs,notificationchannels,gitopsrepositories,remediationpolicies -n {{ include "zelyo-policies.namespace" . }}
+
+{{- if not .Values.monitoring.notificationChannels }}
+{{- if not .Values.notifications.channels }}
+
+Next steps:
+  1. Set up a notification channel to receive alerts:
+     https://zelyo-ai.github.io/zelyo-operator/integrations/
+
+  2. Onboard a cloud account for AWS scanning:
+     --set 'cloudAccounts[0].name=aws-prod' \
+     --set 'cloudAccounts[0].provider=aws' \
+     --set 'cloudAccounts[0].accountID=123456789012' \
+     --set 'cloudAccounts[0].credentials.method=irsa' \
+     --set 'cloudAccounts[0].credentials.roleARN=arn:aws:iam::123456789012:role/ZelyoReadOnly'
+{{- end }}
+{{- end }}

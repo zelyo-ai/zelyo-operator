@@ -1,0 +1,77 @@
+{{- range .Values.notifications.channels }}
+---
+apiVersion: zelyo.ai/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "zelyo-policies.namespace" $ }}
+  labels:
+    {{- include "zelyo-policies.labels" $ | nindent 4 }}
+    zelyo.ai/channel-type: {{ .type }}
+  {{- with $.Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .type }}
+  credentialSecret: {{ .credentialSecret }}
+  severityFilter: {{ .severityFilter | default "medium" }}
+  {{- if .rateLimit }}
+  rateLimit:
+    maxPerHour: {{ .rateLimit.maxPerHour | default 60 }}
+    aggregateSeconds: {{ .rateLimit.aggregateSeconds | default 30 }}
+  {{- end }}
+  {{- if .slack }}
+  slack:
+    channel: {{ .slack.channel | quote }}
+  {{- end }}
+  {{- if .msTeams }}
+  msTeams:
+    {{- if .msTeams.webhookURLKey }}
+    webhookURLKey: {{ .msTeams.webhookURLKey }}
+    {{- end }}
+  {{- end }}
+  {{- if .pagerDuty }}
+  pagerDuty:
+    {{- if .pagerDuty.routingKeyKey }}
+    routingKeyKey: {{ .pagerDuty.routingKeyKey }}
+    {{- end }}
+    {{- if .pagerDuty.defaultSeverity }}
+    defaultSeverity: {{ .pagerDuty.defaultSeverity }}
+    {{- end }}
+  {{- end }}
+  {{- if .alertManager }}
+  alertManager:
+    endpoint: {{ .alertManager.endpoint | quote }}
+    {{- if .alertManager.tlsInsecureSkipVerify }}
+    tlsInsecureSkipVerify: {{ .alertManager.tlsInsecureSkipVerify }}
+    {{- end }}
+  {{- end }}
+  {{- if .telegram }}
+  telegram:
+    chatID: {{ .telegram.chatID | quote }}
+  {{- end }}
+  {{- if .whatsApp }}
+  whatsApp:
+    phoneNumber: {{ .whatsApp.phoneNumber | quote }}
+  {{- end }}
+  {{- if .webhook }}
+  webhook:
+    url: {{ .webhook.url | quote }}
+    {{- if .webhook.headers }}
+    headers:
+      {{- toYaml .webhook.headers | nindent 6 }}
+    {{- end }}
+    {{- if .webhook.tlsInsecureSkipVerify }}
+    tlsInsecureSkipVerify: {{ .webhook.tlsInsecureSkipVerify }}
+    {{- end }}
+  {{- end }}
+  {{- if .email }}
+  email:
+    recipients:
+      {{- toYaml .email.recipients | nindent 6 }}
+    smtpHost: {{ .email.smtpHost | quote }}
+    smtpPort: {{ .email.smtpPort | default 587 }}
+    fromAddress: {{ .email.fromAddress | quote }}
+  {{- end }}
+{{- end }}
