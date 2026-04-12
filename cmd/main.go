@@ -81,9 +81,10 @@ type cliFlags struct {
 	webhookCertKey       string
 }
 
-// parseFlags registers and parses all CLI flags, returning the populated struct.
-func parseFlags() cliFlags {
-	f := cliFlags{}
+// parseFlags registers all CLI flags and returns a pointer to the struct.
+// The caller must call flag.Parse() before using the returned values.
+func parseFlags() *cliFlags {
+	f := &cliFlags{}
 	flag.StringVar(&f.metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&f.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -267,8 +268,8 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                buildMetricsServerOptions(&f, tlsOpts),
-		WebhookServer:          buildWebhookServer(&f, tlsOpts),
+		Metrics:                buildMetricsServerOptions(f, tlsOpts),
+		WebhookServer:          buildWebhookServer(f, tlsOpts),
 		HealthProbeBindAddress: f.probeAddr,
 		LeaderElection:         f.enableLeaderElection,
 		LeaderElectionID:       "zelyo.ai",
