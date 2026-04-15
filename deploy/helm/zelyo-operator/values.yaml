@@ -225,14 +225,25 @@ webhook:
   port: 9443
 
   certManager:
-    # -- Use cert-manager to manage webhook TLS certificates
+    # -- Use cert-manager to manage webhook TLS certificates.
+    # Requires cert-manager to already be installed in the cluster.
+    # If enabled, takes precedence over `selfSigned` below.
     enabled: false
     # -- cert-manager Issuer kind (Issuer or ClusterIssuer)
     issuerKind: Issuer
     # -- cert-manager Issuer name (auto-created if not set)
     issuerName: ""
 
-  # -- Use self-signed certificates (when cert-manager is disabled)
+  # -- Generate a self-signed CA + server cert at `helm install` time and
+  # ship them via a kubernetes.io/tls Secret. The CA is inlined into the
+  # webhook configurations' clientConfig.caBundle, so no cert-manager is
+  # required. On `helm upgrade` the existing Secret is reused to avoid
+  # invalidating the live caBundle.
+  # Set to false only when cert-manager is handling the webhook cert
+  # (i.e. `certManager.enabled=true`). Setting both to false disables
+  # chart-managed TLS entirely — the operator will fail to start unless
+  # you provide your own cert material matching the expected mount path,
+  # which the chart does not currently wire up.
   selfSigned: true
 
 # ── Metrics & Monitoring ───────────────────────────────────────────────

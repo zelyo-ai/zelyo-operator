@@ -1,4 +1,42 @@
 {{- if .Values.webhook.enabled }}
+{{- /*
+  Webhook TLS strategy — mutually exclusive, cert-manager wins if both are on:
+    1. certManager.enabled=true  → cert-manager issues the cert, CABundle is
+       injected via the cert-manager.io/inject-ca-from annotation.
+    2. selfSigned=true           → this chart generates a CA + server cert
+       at install time, writes them to a Secret, and inlines the CA into the
+       webhook configurations' clientConfig.caBundle. Certs are preserved
+       across `helm upgrade` via a `lookup` of the existing Secret.
+    3. Neither                   → no cert material is produced. The operator
+       will refuse to start (see main.go) so failures are loud and fast.
+*/ -}}
+{{- $svc := include "zelyo-operator.webhookServiceName" . -}}
+{{- $ns := include "zelyo-operator.namespace" . -}}
+{{- $secretName := include "zelyo-operator.webhookCertSecret" . -}}
+{{- $useSelfSigned := and (not .Values.webhook.certManager.enabled) .Values.webhook.selfSigned -}}
+{{- $caBundle := "" -}}
+{{- $tlsCrt := "" -}}
+{{- $tlsKey := "" -}}
+{{- if $useSelfSigned -}}
+{{- /*
+  Reuse an existing cert on upgrade so the in-flight admission traffic keeps
+  validating. Fall back to generating a fresh CA + leaf on first install.
+*/ -}}
+{{- $existing := lookup "v1" "Secret" $ns $secretName -}}
+{{- if and $existing (index (default dict $existing.data) "tls.crt") (index (default dict $existing.data) "tls.key") (index (default dict $existing.data) "ca.crt") -}}
+{{- $tlsCrt = index $existing.data "tls.crt" -}}
+{{- $tlsKey = index $existing.data "tls.key" -}}
+{{- $caBundle = index $existing.data "ca.crt" -}}
+{{- else -}}
+{{- $dns1 := printf "%s.%s.svc" $svc $ns -}}
+{{- $dns2 := printf "%s.%s.svc.cluster.local" $svc $ns -}}
+{{- $ca := genCA (printf "%s-ca" $svc) 3650 -}}
+{{- $cert := genSignedCert $dns1 nil (list $svc $dns1 $dns2) 3650 $ca -}}
+{{- $tlsCrt = $cert.Cert | b64enc -}}
+{{- $tlsKey = $cert.Key | b64enc -}}
+{{- $caBundle = $ca.Cert | b64enc -}}
+{{- end -}}
+{{- end }}
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
@@ -7,7 +45,7 @@ metadata:
     {{- include "zelyo-operator.labels" . | nindent 4 }}
   {{- if .Values.webhook.certManager.enabled }}
   annotations:
-    cert-manager.io/inject-ca-from: {{ include "zelyo-operator.namespace" . }}/{{ include "zelyo-operator.webhookCertSecret" . }}
+    cert-manager.io/inject-ca-from: {{ $ns }}/{{ $secretName }}
   {{- end }}
 webhooks:
   - name: vsecuritypolicy-v1alpha1.kb.io
@@ -15,10 +53,13 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ include "zelyo-operator.webhookServiceName" . }}
-        namespace: {{ include "zelyo-operator.namespace" . }}
+        name: {{ $svc }}
+        namespace: {{ $ns }}
         path: /validate-zelyo-operator-zelyo-ai-v1alpha1-securitypolicy
         port: 443
+      {{- if $useSelfSigned }}
+      caBundle: {{ $caBundle }}
+      {{- end }}
     failurePolicy: {{ .Values.webhook.failurePolicy }}
     timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
     rules:
@@ -41,7 +82,7 @@ metadata:
     {{- include "zelyo-operator.labels" . | nindent 4 }}
   {{- if .Values.webhook.certManager.enabled }}
   annotations:
-    cert-manager.io/inject-ca-from: {{ include "zelyo-operator.namespace" . }}/{{ include "zelyo-operator.webhookCertSecret" . }}
+    cert-manager.io/inject-ca-from: {{ $ns }}/{{ $secretName }}
   {{- end }}
 webhooks:
   - name: msecuritypolicy-v1alpha1.kb.io
@@ -49,10 +90,13 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ include "zelyo-operator.webhookServiceName" . }}
-        namespace: {{ include "zelyo-operator.namespace" . }}
+        name: {{ $svc }}
+        namespace: {{ $ns }}
         path: /mutate-zelyo-operator-zelyo-ai-v1alpha1-securitypolicy
         port: 443
+      {{- if $useSelfSigned }}
+      caBundle: {{ $caBundle }}
+      {{- end }}
     failurePolicy: {{ .Values.webhook.failurePolicy }}
     timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
     rules:
@@ -66,20 +110,35 @@ webhooks:
         resources:
           - securitypolicies
     sideEffects: None
+{{- if $useSelfSigned }}
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelyo-operator.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $tlsCrt }}
+  tls.key: {{ $tlsKey }}
+  ca.crt: {{ $caBundle }}
+{{- end }}
 {{- if .Values.webhook.certManager.enabled }}
+---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ include "zelyo-operator.webhookCertSecret" . }}
-  namespace: {{ include "zelyo-operator.namespace" . }}
+  name: {{ $secretName }}
+  namespace: {{ $ns }}
   labels:
     {{- include "zelyo-operator.labels" . | nindent 4 }}
 spec:
-  secretName: {{ include "zelyo-operator.webhookCertSecret" . }}
+  secretName: {{ $secretName }}
   dnsNames:
-    - {{ include "zelyo-operator.webhookServiceName" . }}.{{ include "zelyo-operator.namespace" . }}.svc
-    - {{ include "zelyo-operator.webhookServiceName" . }}.{{ include "zelyo-operator.namespace" . }}.svc.cluster.local
+    - {{ $svc }}.{{ $ns }}.svc
+    - {{ $svc }}.{{ $ns }}.svc.cluster.local
   issuerRef:
     kind: {{ .Values.webhook.certManager.issuerKind }}
     {{- if .Values.webhook.certManager.issuerName }}
@@ -93,7 +152,7 @@ apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: {{ include "zelyo-operator.fullname" . }}-selfsigned
-  namespace: {{ include "zelyo-operator.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "zelyo-operator.labels" . | nindent 4 }}
 spec:
