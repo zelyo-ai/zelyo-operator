@@ -67,7 +67,7 @@ SecurityPolicy, ClusterScan, or MonitoringPolicy CRs were created.
 
 Enable the surfaces you need, for example:
 
-  helm upgrade zelyo-policies ./zelyo-policies -n {{ include "zelyo-policies.namespace" . }} \
+  helm upgrade {{ .Release.Name }} ./zelyo-policies -n {{ include "zelyo-policies.namespace" . }} \
     --set securityPolicies.enabled=true \
     --set clusterScans.enabled=true
 
