@@ -62,7 +62,7 @@ spec:
             {{- else }}
             - --metrics-secure=false
             {{- end }}
-            {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+            {{- if and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.selfSigned) }}
             - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
             {{- end }}
           ports:
@@ -134,7 +134,7 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+            {{- if and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.selfSigned) }}
             - name: webhook-certs
               mountPath: /tmp/k8s-webhook-server/serving-certs
               readOnly: true
@@ -145,7 +145,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+        {{- if and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.selfSigned) }}
         - name: webhook-certs
           secret:
             secretName: {{ include "zelyo-operator.webhookCertSecret" . }}
