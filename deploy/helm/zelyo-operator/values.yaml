@@ -239,9 +239,11 @@ webhook:
   # webhook configurations' clientConfig.caBundle, so no cert-manager is
   # required. On `helm upgrade` the existing Secret is reused to avoid
   # invalidating the live caBundle.
-  # Set to false ONLY if you're providing TLS material out-of-band (e.g.
-  # cert-manager via `certManager.enabled=true`, or a pre-existing Secret
-  # mounted via `extraVolumes`).
+  # Set to false only when cert-manager is handling the webhook cert
+  # (i.e. `certManager.enabled=true`). Setting both to false disables
+  # chart-managed TLS entirely — the operator will fail to start unless
+  # you provide your own cert material matching the expected mount path,
+  # which the chart does not currently wire up.
   selfSigned: true
 
 # ── Metrics & Monitoring ───────────────────────────────────────────────
