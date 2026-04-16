@@ -20,12 +20,17 @@ rules:
       - serviceaccounts
       - namespaces
       - nodes
-      - events
       - persistentvolumeclaims
       - persistentvolumes
       - resourcequotas
       - limitranges
     verbs: ["get", "list", "watch"]
+
+  # Events — controllers emit events via EventRecorder
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["create", "get", "list", "patch", "watch"]
 
   # Workload resources — read-only
   - apiGroups: ["apps"]
