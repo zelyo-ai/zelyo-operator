@@ -24,6 +24,9 @@ spec:
     - jsonPath: .spec.llm.provider
       name: LLM Provider
       type: string
+    - jsonPath: .status.llmKeyStatus
+      name: LLM Key
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -294,6 +297,21 @@ spec:
               lastReconciled:
                 description: lastReconciled is when the config was last reconciled.
                 format: date-time
+                type: string
+              llmKeyLastVerified:
+                description: llmKeyLastVerified is when the LLM API key was last successfully
+                  verified.
+                format: date-time
+                type: string
+              llmKeyStatus:
+                description: |-
+                  llmKeyStatus indicates whether the LLM API key has been verified.
+                  Values: Pending, Verified, Invalid, RateLimited.
+                enum:
+                - Pending
+                - Verified
+                - Invalid
+                - RateLimited
                 type: string
               observedGeneration:
                 description: observedGeneration is the most recent generation observed
