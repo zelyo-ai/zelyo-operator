@@ -40,6 +40,15 @@ type PresetFile struct {
 	Content string `json:"content"`
 }
 
+// Preset state values used by PresetStatus.State. Keep these in sync
+// with the JS drawer labels in internal/dashboard/static/js/pages/compliance.js.
+const (
+	PresetStateNotEnabled   = "not_enabled"
+	PresetStateProposing    = "proposing"
+	PresetStatePendingMerge = "pending_merge"
+	PresetStateEnabled      = "enabled"
+)
+
 // PresetStatus captures the per-preset runtime state rendered in the UI.
 type PresetStatus struct {
 	ID         string     `json:"id"`
@@ -117,7 +126,7 @@ func (s *presetStore) get(id string) *PresetStatus {
 		cp := *st
 		return &cp
 	}
-	return &PresetStatus{ID: id, State: "not_enabled"}
+	return &PresetStatus{ID: id, State: PresetStateNotEnabled}
 }
 
 func (s *presetStore) update(id string, mutate func(*PresetStatus)) *PresetStatus {
@@ -125,7 +134,7 @@ func (s *presetStore) update(id string, mutate func(*PresetStatus)) *PresetStatu
 	defer s.mu.Unlock()
 	st, ok := s.status[id]
 	if !ok {
-		st = &PresetStatus{ID: id, State: "not_enabled"}
+		st = &PresetStatus{ID: id, State: PresetStateNotEnabled}
 		s.status[id] = st
 	}
 	mutate(st)

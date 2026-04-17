@@ -11,10 +11,18 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/zelyo-ai/zelyo-operator/internal/events"
 )
+
+// mockPRCounter is a monotonically increasing suffix seeded from the
+// process start time. Paired with the per-call PR base, it gives every
+// generated URL a unique integer even when called many times per second.
+//
+//nolint:gochecknoglobals // demo-only monotonic counter, intentional.
+var mockPRCounter atomic.Int64
 
 // dispatchPresetRoute routes /api/v1/presets/{id}[/propose|/apply|/status]
 // to the matching handler. Go's stdlib mux doesn't support path params, so
@@ -98,6 +106,21 @@ func (s *Server) handlePresetPropose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Idempotency: if a PR is already in flight or the preset is enabled,
+	// return the existing status rather than drafting another PR and
+	// stacking a second demoAdvancePreset goroutine. Double-clicks, retries,
+	// and page refreshes should all be safe.
+	if existing := store.get(p.ID); existing != nil {
+		switch existing.State {
+		case PresetStateProposing, PresetStatePendingMerge, PresetStateEnabled:
+			s.writeJSON(w, map[string]interface{}{
+				"status": existing,
+				"prUrl":  existing.PRURL,
+			})
+			return
+		}
+	}
+
 	prURL := mockPRURL(p.ID, cfg.GitOpsRepo)
 	now := time.Now().UTC()
 
@@ -126,7 +149,7 @@ func (s *Server) handlePresetPropose(w http.ResponseWriter, r *http.Request) {
 
 	// Flip local state and fire pipeline events.
 	status := store.update(p.ID, func(st *PresetStatus) {
-		st.State = "proposing"
+		st.State = PresetStateProposing
 		t := now
 		st.ProposedAt = &t
 		st.PRURL = prURL
@@ -145,7 +168,7 @@ func (s *Server) handlePresetPropose(w http.ResponseWriter, r *http.Request) {
 	}
 
 	store.update(p.ID, func(st *PresetStatus) {
-		st.State = "pending_merge"
+		st.State = PresetStatePendingMerge
 		st.Message = "Waiting for PR review"
 	})
 
@@ -174,7 +197,7 @@ func (s *Server) handlePresetApply(w http.ResponseWriter, r *http.Request) {
 	store := DefaultPresetStore()
 	now := time.Now().UTC()
 	status := store.update(p.ID, func(st *PresetStatus) {
-		st.State = "enabled"
+		st.State = PresetStateEnabled
 		st.EnabledAt = &now
 		st.PRURL = ""
 		st.Message = "Applied directly to cluster"
@@ -222,7 +245,7 @@ func (s *Server) demoAdvancePreset(ctx context.Context, p *Preset, prURL string)
 	}
 	enabledAt := time.Now().UTC()
 	DefaultPresetStore().update(p.ID, func(st *PresetStatus) {
-		st.State = "enabled"
+		st.State = PresetStateEnabled
 		st.EnabledAt = &enabledAt
 		st.Message = "GitOps sync complete"
 	})
@@ -260,8 +283,16 @@ func presetIDFromPath(path, _ string) string {
 	return ""
 }
 
+// mockPRURL returns a collision-resistant demo PR URL. The PR number is
+// built from an atomic process counter offset by the current second, so
+// two near-simultaneous calls (double-click retries, synthesizer bursts,
+// etc.) never produce the same URL for the same repo. The previous
+// implementation cycled through 800 values once per second and was
+// prone to collisions which overwrote remediation contexts.
 func mockPRURL(_, repo string) string {
-	n := 200 + int(time.Now().UnixNano()/1e9)%800
+	base := time.Now().Unix() % 100_000 // 5-digit realistic-looking base
+	suffix := mockPRCounter.Add(1)
+	n := base*1000 + (suffix % 1000)
 	return fmt.Sprintf("https://github.com/%s/pull/%d", repo, n)
 }
 
