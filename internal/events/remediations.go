@@ -5,6 +5,7 @@ Copyright 2026 Zelyo AI
 package events
 
 import (
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -51,17 +52,25 @@ type RemediationItem struct {
 // We key on PR URL for lookup and also carry a per-scan index so
 // finding.resolved events (which carry a scan name) can find the right
 // context to update.
+//
+// The store is bounded by `capacity` — when full, the oldest remediation
+// (by CreatedAt) is evicted. That keeps long-running operators from
+// growing memory indefinitely. Zero / negative means unbounded.
 type remediationStore struct {
 	mu             sync.RWMutex
 	byKey          map[string]*RemediationContext
 	scanToKeys     map[string][]string
 	resourceToKeys map[string][]string
+	capacity       int
 }
+
+const defaultRemediationCapacity = 500
 
 var defaultStore = &remediationStore{
 	byKey:          map[string]*RemediationContext{},
 	scanToKeys:     map[string][]string{},
 	resourceToKeys: map[string][]string{},
+	capacity:       defaultRemediationCapacity,
 }
 
 // RemediationStore is the public type used by callers; the underlying
@@ -73,35 +82,90 @@ func DefaultRemediationStore() *RemediationStore {
 	return defaultStore
 }
 
-// Upsert records or merges a remediation context. Called by the
-// demo synthesizer (and, eventually, the real remediation engine) when a PR
-// is about to be opened.
+// Upsert records or merges a remediation context. A deep copy of ctx is
+// stored so the caller can continue to mutate the argument after return
+// without racing with the store's readers.
 func (s *remediationStore) Upsert(ctx *RemediationContext) {
 	if ctx == nil || ctx.PRURL == "" {
 		return
 	}
-	ctx.Key = ctx.PRURL
-	if ctx.ResolvedKeys == nil {
-		ctx.ResolvedKeys = map[string]struct{}{}
+	stored := copyCtx(ctx)
+	stored.Key = stored.PRURL
+	if stored.ResolvedKeys == nil {
+		stored.ResolvedKeys = map[string]struct{}{}
 	}
-	if ctx.CreatedAt.IsZero() {
-		ctx.CreatedAt = time.Now().UTC()
+	if stored.CreatedAt.IsZero() {
+		stored.CreatedAt = time.Now().UTC()
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.byKey[ctx.Key] = ctx
+	s.byKey[stored.Key] = stored
+	if stored.ScanRef != "" {
+		s.scanToKeys[stored.ScanRef] = appendUnique(s.scanToKeys[stored.ScanRef], stored.Key)
+	}
+	for i := range stored.Findings {
+		rk := stored.Findings[i].ResourceKey
+		if rk == "" {
+			continue
+		}
+		s.resourceToKeys[rk] = appendUnique(s.resourceToKeys[rk], stored.Key)
+	}
+	s.evictIfOverCapacity()
+}
+
+// evictIfOverCapacity drops the oldest entries (by CreatedAt) while the
+// store exceeds its capacity. Called under the write lock.
+func (s *remediationStore) evictIfOverCapacity() {
+	if s.capacity <= 0 || len(s.byKey) <= s.capacity {
+		return
+	}
+	keys := make([]string, 0, len(s.byKey))
+	for k := range s.byKey {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return s.byKey[keys[i]].CreatedAt.Before(s.byKey[keys[j]].CreatedAt)
+	})
+	drop := len(s.byKey) - s.capacity
+	for i := 0; i < drop && i < len(keys); i++ {
+		s.removeLocked(keys[i])
+	}
+}
+
+// removeLocked unindexes and deletes a key. Must be called under the write lock.
+func (s *remediationStore) removeLocked(key string) {
+	ctx, ok := s.byKey[key]
+	if !ok {
+		return
+	}
+	delete(s.byKey, key)
 	if ctx.ScanRef != "" {
-		s.scanToKeys[ctx.ScanRef] = appendUnique(s.scanToKeys[ctx.ScanRef], ctx.Key)
+		s.scanToKeys[ctx.ScanRef] = removeString(s.scanToKeys[ctx.ScanRef], key)
+		if len(s.scanToKeys[ctx.ScanRef]) == 0 {
+			delete(s.scanToKeys, ctx.ScanRef)
+		}
 	}
 	for i := range ctx.Findings {
 		rk := ctx.Findings[i].ResourceKey
 		if rk == "" {
 			continue
 		}
-		s.resourceToKeys[rk] = appendUnique(s.resourceToKeys[rk], ctx.Key)
+		s.resourceToKeys[rk] = removeString(s.resourceToKeys[rk], key)
+		if len(s.resourceToKeys[rk]) == 0 {
+			delete(s.resourceToKeys, rk)
+		}
 	}
+}
+
+func removeString(in []string, v string) []string {
+	for i, s := range in {
+		if s == v {
+			return append(in[:i], in[i+1:]...)
+		}
+	}
+	return in
 }
 
 // Get returns a copy of the context for the given key, or nil.
@@ -123,14 +187,9 @@ func (s *remediationStore) List(limit int) []RemediationContext {
 	for _, v := range s.byKey {
 		out = append(out, *copyCtx(v))
 	}
-	// Newest first by CreatedAt.
-	for i := 0; i < len(out); i++ {
-		for j := i + 1; j < len(out); j++ {
-			if out[j].CreatedAt.After(out[i].CreatedAt) {
-				out[i], out[j] = out[j], out[i]
-			}
-		}
-	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}

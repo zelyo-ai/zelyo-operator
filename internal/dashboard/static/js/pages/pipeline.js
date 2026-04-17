@@ -344,7 +344,8 @@ function renderPanelBody() {
   if (!_panelEl || !_panelCtx) return;
   const ctx = _panelCtx;
   _panelEl.querySelector('.pipeline-panel-title').textContent = ctx.summary || 'Remediation';
-  const sub = ctx.repo + (ctx.prUrl ? ` · <a href="${escapeAttr(ctx.prUrl)}" target="_blank" rel="noopener">${escapeHtml(shortPR(ctx.prUrl))}</a>` : '');
+  const repoPart = escapeHtml(ctx.repo || '');
+  const sub = repoPart + (ctx.prUrl ? ` · <a href="${escapeAttr(ctx.prUrl)}" target="_blank" rel="noopener">${escapeHtml(shortPR(ctx.prUrl))}</a>` : '');
   _panelEl.querySelector('.pipeline-panel-subtitle').innerHTML = sub;
 
   const total = (ctx.findings || []).length;

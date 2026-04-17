@@ -194,26 +194,18 @@ func (s *Server) handleRemediations(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleExplain returns a plain-English explanation for a security finding.
-// Accepts POST with a JSON body (preferred) or GET with query params.
+// POST-only so finding details (resource name, title) never leak into
+// browser history, reverse-proxy logs, or server access logs via the URL.
 func (s *Server) handleExplain(w http.ResponseWriter, r *http.Request) {
-	req := &ExplainRequest{}
-	switch r.Method {
-	case http.MethodPost:
-		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
-			s.writeError(w, http.StatusBadRequest, "invalid JSON body")
-			return
-		}
-	case http.MethodGet:
-		q := r.URL.Query()
-		req.Rule = q.Get("rule")
-		req.Severity = q.Get("severity")
-		req.Resource = q.Get("resource")
-		req.Title = q.Get("title")
-	default:
+	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-
+	req := &ExplainRequest{}
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
 	if req.Rule == "" {
 		s.writeError(w, http.StatusBadRequest, "rule is required")
 		return

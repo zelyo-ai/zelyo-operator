@@ -5,6 +5,7 @@ Copyright 2026 Zelyo AI
 package dashboard
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -136,8 +137,11 @@ func (s *Server) handlePresetPropose(w http.ResponseWriter, r *http.Request) {
 
 	// In demo mode: auto-merge after a short delay so the Pipeline visibly
 	// progresses through open → merged → enabled without human action.
+	// Use a background context — the preset lifecycle outlives the inbound
+	// HTTP request that triggered it. We still cooperatively return early
+	// on shutdown (ctx.Done in the server Start).
 	if cfg.DemoMode {
-		go s.demoAdvancePreset(p, prURL)
+		go s.demoAdvancePreset(context.Background(), p, prURL)
 	}
 
 	store.update(p.ID, func(st *PresetStatus) {
@@ -195,15 +199,23 @@ func (s *Server) handlePresetStatus(w http.ResponseWriter, r *http.Request) {
 // demoAdvancePreset simulates the PR lifecycle in demo mode: merge after
 // ~3s, then mark the preset enabled after a short "sync" delay. Real
 // deployments never call this — the controller that watches PR state does.
-func (s *Server) demoAdvancePreset(p *Preset, prURL string) {
+//
+// ctx lets the goroutine exit cleanly on server shutdown instead of
+// continuing to mutate shared state after the process has started to
+// unwind.
+func (s *Server) demoAdvancePreset(ctx context.Context, p *Preset, prURL string) {
 	//nolint:gosec // cadence jitter only, non-cryptographic.
 	rng := rand.New(rand.NewSource(time.Now().UnixNano() ^ int64(len(p.ID))))
 
-	time.Sleep(time.Duration(2800+rng.Intn(1200)) * time.Millisecond)
+	if !sleepCtx(ctx, time.Duration(2800+rng.Intn(1200))*time.Millisecond) {
+		return
+	}
 	events.DefaultRemediationStore().MarkMerged(prURL, time.Now().UTC())
 	events.EmitPullRequestMerged(prURL, DefaultPresetStore().ConfigStatus().GitOpsRepo)
 
-	time.Sleep(1400 * time.Millisecond)
+	if !sleepCtx(ctx, 1400*time.Millisecond) {
+		return
+	}
 	enabledAt := time.Now().UTC()
 	DefaultPresetStore().update(p.ID, func(st *PresetStatus) {
 		st.State = "enabled"
@@ -215,16 +227,33 @@ func (s *Server) demoAdvancePreset(p *Preset, prURL string) {
 	// flips green just like for AI remediations.
 	for _, f := range p.Files {
 		events.DefaultRemediationStore().MarkResolved(f.Path, time.Now().UTC())
-		time.Sleep(200 * time.Millisecond)
+		if !sleepCtx(ctx, 200*time.Millisecond) {
+			return
+		}
+	}
+}
+
+// sleepCtx sleeps for d or returns false if ctx is canceled first.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
 	}
 }
 
 // ---- helpers -------------------------------------------------------------
 
-// presetIDFromPath extracts the path after the "/api/v1/presets/" prefix.
+// presetIDFromPath extracts the path after the "/api/v1/presets/" prefix,
+// tolerant of any base-path mount (e.g. /dashboard/api/v1/presets/<id>).
 // Callers strip trailing action suffixes (/propose, /apply, /status).
 func presetIDFromPath(path, _ string) string {
-	return strings.TrimPrefix(path, "/api/v1/presets/")
+	const marker = "/api/v1/presets/"
+	if idx := strings.Index(path, marker); idx >= 0 {
+		return path[idx+len(marker):]
+	}
+	return ""
 }
 
 func mockPRURL(_, repo string) string {

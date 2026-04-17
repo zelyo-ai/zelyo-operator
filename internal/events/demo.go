@@ -19,10 +19,7 @@ import (
 // Activation is gated by the caller (e.g. an env-var check in main) so this
 // code never runs in production clusters by accident.
 func RunDemoSynthesizer(ctx context.Context) {
-	//nolint:gosec // non-cryptographic randomness is appropriate for demo synthesis.
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	fireSequence(rng)
+	fireSequence()
 
 	ticker := time.NewTicker(11 * time.Second)
 	defer ticker.Stop()
@@ -32,7 +29,7 @@ func RunDemoSynthesizer(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fireSequence(rng)
+			fireSequence()
 		}
 	}
 }
@@ -190,14 +187,24 @@ var demoScenarios = []demoScenario{
 	},
 }
 
-func fireSequence(rng *rand.Rand) {
-	scenario := demoScenarios[rng.Intn(len(demoScenarios))]
+// newRNG returns a fresh non-cryptographic RNG. Callers hold their own
+// *rand.Rand so concurrent goroutines never share one (math/rand.Rand is
+// not safe for concurrent use).
+func newRNG() *rand.Rand {
+	//nolint:gosec // non-cryptographic randomness is appropriate for demo synthesis.
+	return rand.New(rand.NewSource(time.Now().UnixNano()))
+}
+
+func fireSequence() {
+	pickRNG := newRNG()
+	scenario := demoScenarios[pickRNG.Intn(len(demoScenarios))]
 
 	// Stage 1: Scan starts.
 	EmitScanStarted(scenario.scanName, scenario.namespace, scenario.scanners)
 
 	// Stage 1b: findings stream in over a couple of seconds.
 	go func() {
+		rng := newRNG() // own RNG per goroutine; don't share with the ticker loop
 		for i := range scenario.findings {
 			time.Sleep(time.Duration(300+rng.Intn(500)) * time.Millisecond)
 			f := &scenario.findings[i]

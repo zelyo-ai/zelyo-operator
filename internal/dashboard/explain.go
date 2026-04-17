@@ -170,9 +170,11 @@ func genericExplanation(req *ExplainRequest) string {
 
 // ---- Caching + selection ---------------------------------------------------
 
-// CachingExplainer wraps another Explainer with an in-memory TTL cache
-// keyed by rule+severity. Resource is intentionally *not* part of the key —
-// the narrative is about the rule, not a specific pod.
+// CachingExplainer wraps another Explainer with an in-memory TTL cache.
+// The key covers every request field the rendered explanation can embed
+// (rule + severity + resource + title) so two findings with the same rule
+// but different resources don't share a cached explanation that mentions
+// the wrong resource name.
 type CachingExplainer struct {
 	Inner Explainer
 	TTL   time.Duration
@@ -228,6 +230,10 @@ func cacheKey(req *ExplainRequest) string {
 	h.Write([]byte(strings.ToLower(req.Rule)))
 	h.Write([]byte{'|'})
 	h.Write([]byte(strings.ToLower(req.Severity)))
+	h.Write([]byte{'|'})
+	h.Write([]byte(strings.ToLower(req.Resource)))
+	h.Write([]byte{'|'})
+	h.Write([]byte(strings.ToLower(req.Title)))
 	return hex.EncodeToString(h.Sum(nil))
 }
 

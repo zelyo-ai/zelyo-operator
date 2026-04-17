@@ -337,10 +337,14 @@ func (s *Server) aggregateReportsAndConfig(ctx context.Context, resp *OverviewRe
 
 	// Resolved findings — derived from the remediation store (each tracked
 	// remediation has a per-finding resolved flag the verify stage sets).
+	// Skip config-preset items: those are file-creations from the
+	// Compliance preset flow, not scan findings, and shouldn't inflate
+	// the "findings resolved" metric.
 	remediations := events.DefaultRemediationStore().List(0)
 	for i := range remediations {
 		for j := range remediations[i].Findings {
-			if remediations[i].Findings[j].Resolved {
+			f := &remediations[i].Findings[j]
+			if f.Resolved && f.Rule != "config-preset" {
 				resp.ResolvedFindings++
 			}
 		}
@@ -350,13 +354,14 @@ func (s *Server) aggregateReportsAndConfig(ctx context.Context, resp *OverviewRe
 // aggregateRankings populates TopFailingChecks, TopAffectedKinds, Frameworks,
 // and AccountsByRisk — the four ranked lists the Overview page renders.
 func (s *Server) aggregateRankings(ctx context.Context, resp *OverviewResponse) {
-	// Rank checks (rule category) and affected kinds across all reports.
+	// Rank checks (rule category) and affected kinds from the latest
+	// report per scan only. Counting every historical report skews the
+	// rankings toward old findings that may already be fixed.
 	reports := &zelyov1alpha1.ScanReportList{}
 	if err := s.client.List(ctx, reports); err == nil {
 		byCheck := map[string]TopItem{}
 		byKind := map[string]TopItem{}
-		for i := range reports.Items {
-			r := &reports.Items[i]
+		for _, r := range latestReportsByScan(reports) {
 			for j := range r.Spec.Findings {
 				f := &r.Spec.Findings[j]
 				c := byCheck[f.Category]

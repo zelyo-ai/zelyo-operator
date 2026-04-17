@@ -4,9 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Zelyo Operator Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <!-- No external font CDN: the CSS font-family stack falls back to
+       system UI fonts (SF Pro / Segoe UI / Inter if locally installed).
+       This keeps the dashboard usable in air-gapped clusters and avoids
+       leaking operator-UI access metadata to third parties. -->
   <link rel="stylesheet" href="/static/css/main.css">
 </head>
 <body>

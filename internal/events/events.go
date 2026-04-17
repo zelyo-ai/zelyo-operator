@@ -106,19 +106,39 @@ func SetDefault(b *Bus) {
 // Publish appends an event to the ring buffer and fans it out to subscribers.
 // Subscribers that cannot keep up drop the event rather than blocking the
 // caller — controller reconcile loops must never stall on telemetry.
+//
+// The published event is defensively copied so callers can reuse or mutate
+// the argument after Publish returns without racing with buffered history
+// or in-flight subscriber sends.
 func (b *Bus) Publish(e *Event) {
 	if e.Timestamp.IsZero() {
 		e.Timestamp = time.Now().UTC()
 	}
 
-	b.mu.Lock()
-	if e.ID == "" {
-		b.seq++
-		e.ID = fmt.Sprintf("evt-%d-%d", e.Timestamp.UnixNano(), b.seq)
+	// Copy the event (including Meta) so the caller's map can be mutated
+	// freely after Publish returns.
+	ev := *e
+	if e.Meta != nil {
+		ev.Meta = make(map[string]string, len(e.Meta))
+		for k, v := range e.Meta {
+			ev.Meta[k] = v
+		}
 	}
-	b.buffer = append(b.buffer, *e)
+
+	b.mu.Lock()
+	if ev.ID == "" {
+		b.seq++
+		ev.ID = fmt.Sprintf("evt-%d-%d", ev.Timestamp.UnixNano(), b.seq)
+	}
+	b.buffer = append(b.buffer, ev)
 	if len(b.buffer) > b.capacity {
-		b.buffer = b.buffer[len(b.buffer)-b.capacity:]
+		// Zero out the slots we're about to drop so the underlying array
+		// doesn't keep references to Meta maps alive beyond their TTL.
+		drop := len(b.buffer) - b.capacity
+		for i := 0; i < drop; i++ {
+			b.buffer[i] = Event{}
+		}
+		b.buffer = b.buffer[drop:]
 	}
 	b.mu.Unlock()
 
@@ -128,7 +148,7 @@ func (b *Bus) Publish(e *Event) {
 	b.mu.RLock()
 	for ch := range b.subscribers {
 		select {
-		case ch <- *e:
+		case ch <- ev:
 		default:
 		}
 	}

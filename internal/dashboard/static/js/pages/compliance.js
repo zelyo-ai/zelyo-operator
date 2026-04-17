@@ -23,6 +23,8 @@ let _drawerBackdropEl = null;
 let _drawerPresetID = null;
 let _drawerPoll = null;
 let _sseHandlers = [];
+let _clickBound = false;
+let _documentClickHandler = null;
 
 /* ---------- Data loading ---------- */
 
@@ -403,6 +405,12 @@ function renderDiff(diff) {
 /* ---------- Click + SSE wiring ---------- */
 
 function bindClicks() {
+  // Idempotent: only attach once per page render. Without this guard,
+  // every SSE-driven reload would stack another document-level listener,
+  // causing action clicks to fire multiple POSTs.
+  if (_clickBound || !_container) return;
+  _clickBound = true;
+
   _container.addEventListener('click', (e) => {
     const card = e.target.closest('[data-preset-id]');
     if (!card) return;
@@ -411,12 +419,13 @@ function bindClicks() {
     openDrawer(card.getAttribute('data-preset-id'));
   });
 
-  document.addEventListener('click', (e) => {
+  _documentClickHandler = (e) => {
     const prop = e.target.closest('.preset-propose');
     if (prop) { e.preventDefault(); triggerPropose(prop.getAttribute('data-preset-id')); return; }
     const appl = e.target.closest('.preset-apply');
     if (appl) { e.preventDefault(); triggerApply(appl.getAttribute('data-preset-id')); }
-  });
+  };
+  document.addEventListener('click', _documentClickHandler);
 }
 
 function handleConfigEvent() {
@@ -425,8 +434,8 @@ function handleConfigEvent() {
   fetchJSON('/api/v1/presets').then((resp) => {
     _state.presets = resp.presets || _state.presets;
     renderAll();
-    // Re-bind click on the fresh DOM.
-    bindClicks();
+    // bindClicks() is idempotent + uses event delegation, so the new DOM
+    // (with fresh [data-preset-id] cards) works with the existing listener.
     if (_drawerPresetID) {
       // keep the drawer in sync.
       pollDrawerStatus(_drawerPresetID);
@@ -475,6 +484,11 @@ export function render(container) {
 export function destroy() {
   _sseHandlers.forEach(({ t, h }) => offSSE(t, h));
   _sseHandlers = [];
+  if (_documentClickHandler) {
+    document.removeEventListener('click', _documentClickHandler);
+    _documentClickHandler = null;
+  }
+  _clickBound = false;
   closeDrawer();
   if (_drawerEl && _drawerEl.parentNode) _drawerEl.parentNode.removeChild(_drawerEl);
   if (_drawerBackdropEl && _drawerBackdropEl.parentNode) _drawerBackdropEl.parentNode.removeChild(_drawerBackdropEl);
