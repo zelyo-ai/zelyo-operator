@@ -160,11 +160,11 @@ func (s *Server) handlePresetPropose(w http.ResponseWriter, r *http.Request) {
 
 	// In demo mode: auto-merge after a short delay so the Pipeline visibly
 	// progresses through open → merged → enabled without human action.
-	// Use a background context — the preset lifecycle outlives the inbound
-	// HTTP request that triggered it. We still cooperatively return early
-	// on shutdown (ctx.Done in the server Start).
+	// Use the server's long-lived context (not the per-request one, which
+	// dies when the client disconnects) so the goroutine exits cleanly on
+	// server shutdown instead of mutating shared state into a race.
 	if cfg.DemoMode {
-		go s.demoAdvancePreset(context.Background(), p, prURL)
+		go s.demoAdvancePreset(s.backgroundContext(), p, prURL)
 	}
 
 	store.update(p.ID, func(st *PresetStatus) {

@@ -33,6 +33,13 @@ type Server struct {
 	basePath string
 	client   client.Client
 
+	// startCtx is the long-lived server-lifecycle context set by Start().
+	// Handlers that spawn background work (e.g. the demo PR synthesizer)
+	// derive from it so goroutines observe server shutdown instead of
+	// outliving the process into an inconsistent state.
+	startCtxMu sync.RWMutex
+	startCtx   context.Context
+
 	mu          sync.RWMutex
 	subscribers map[string]chan Event
 }
@@ -171,6 +178,12 @@ func (s *Server) Broadcast(event Event) {
 
 // Start starts the dashboard HTTP server and the heartbeat goroutine.
 func (s *Server) Start(ctx context.Context) error {
+	// Publish the shutdown-aware context so handlers that spawn background
+	// goroutines (preset PR simulator, etc.) can observe cancellation.
+	s.startCtxMu.Lock()
+	s.startCtx = ctx
+	s.startCtxMu.Unlock()
+
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", s.port),
 		Handler:           s.mux,
@@ -213,6 +226,20 @@ func (s *Server) Start(ctx context.Context) error {
 
 // NeedLeaderElection returns false so the dashboard runs on all replicas.
 func (s *Server) NeedLeaderElection() bool { return false }
+
+// backgroundContext returns the server-lifecycle context set by Start(), or
+// context.Background() as a fallback when Start has not yet been called
+// (e.g. in certain test paths). Background goroutines spawned from HTTP
+// handlers should use this rather than context.Background() directly so
+// they observe server shutdown.
+func (s *Server) backgroundContext() context.Context {
+	s.startCtxMu.RLock()
+	defer s.startCtxMu.RUnlock()
+	if s.startCtx == nil {
+		return context.Background()
+	}
+	return s.startCtx
+}
 
 // bridgePipelineEvents subscribes to the pipeline event bus and forwards each
 // event to SSE subscribers tagged with its type (scan.started, finding.detected, ...).
