@@ -258,7 +258,7 @@ func (r *ClusterScanReconciler) executeScan(ctx context.Context, scan *zelyov1al
 		for i := range results {
 			f := &results[i]
 			finding := zelyov1alpha1.Finding{
-				ID:          fmt.Sprintf("%s-%s-%s-%s", f.RuleType, f.ResourceNamespace, f.ResourceName, f.Title[:min(len(f.Title), 20)]),
+				ID:          fmt.Sprintf("%s-%s-%s-%s", f.RuleType, f.ResourceNamespace, f.ResourceName, truncateRunes(f.Title, 20)),
 				Severity:    f.Severity,
 				Category:    f.RuleType,
 				Title:       f.Title,
@@ -354,11 +354,15 @@ func (r *ClusterScanReconciler) evaluateCompliance(ctx context.Context, scan *ze
 func (r *ClusterScanReconciler) createScanReport(ctx context.Context, scan *zelyov1alpha1.ClusterScan, findings []zelyov1alpha1.Finding, summary *zelyov1alpha1.ScanSummary, complianceResults []zelyov1alpha1.ComplianceResult) (string, error) {
 	log := logf.FromContext(ctx)
 
-	reportName := fmt.Sprintf("%s-%d", scan.Name, time.Now().Unix())
+	// Use GenerateName (not Name) so the API server appends a 5-char random
+	// suffix: this guarantees the result never exceeds the DNS-1123 label
+	// limit of 63 chars regardless of scan.Name length, and stays unique
+	// even when two scans complete in the same second (the unix-timestamp
+	// approach previously collided under parallel execution).
 	report := &zelyov1alpha1.ScanReport{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      reportName,
-			Namespace: scan.Namespace,
+			GenerateName: scanReportBasename(scan.Name),
+			Namespace:    scan.Namespace,
 			Labels: map[string]string{
 				"zelyo.ai/scan": scan.Name,
 			},
@@ -388,7 +392,21 @@ func (r *ClusterScanReconciler) createScanReport(ctx context.Context, scan *zely
 		log.Error(err, "Failed to update ScanReport status")
 	}
 
-	return reportName, nil
+	return report.Name, nil
+}
+
+// scanReportBasename returns a GenerateName prefix that leaves at least
+// 6 chars for the API server's random suffix while respecting the 63-char
+// DNS-1123 label limit. ScanReports use the scan name as a prefix so
+// human operators can still correlate reports to their scan in `kubectl
+// get scanreports`.
+func scanReportBasename(scanName string) string {
+	const maxPrefix = 56 // 63 - 5 suffix - 1 dash - 1 safety = plenty.
+	base := scanName
+	if len(base) > maxPrefix {
+		base = base[:maxPrefix]
+	}
+	return base + "-"
 }
 
 // resolveTargetPods lists running pods matching the scan's scope.
@@ -498,4 +516,18 @@ func (r *ClusterScanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&zelyov1alpha1.ScanReport{}).
 		Named("clusterscan").
 		Complete(r)
+}
+
+// truncateRunes returns s truncated to at most maxRunes runes. Slicing a
+// string by byte index (s[:n]) chops mid-codepoint on multi-byte UTF-8
+// input, producing invalid sequences in downstream Finding IDs.
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes])
 }
