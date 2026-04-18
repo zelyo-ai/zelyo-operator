@@ -201,6 +201,10 @@ func (s *Server) handleExplain(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	// Cap body size so a hostile/misbehaving client can't make the handler
+	// allocate unbounded memory while decoding. 16 KiB is ~100x the largest
+	// legitimate ExplainRequest shape.
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	req := &ExplainRequest{}
 	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid JSON body")

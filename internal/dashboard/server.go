@@ -140,11 +140,16 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	s.subscribers[id] = ch
 	s.mu.Unlock()
 
+	// Do NOT close(ch) on cleanup: Broadcast reads the subscribers map under
+	// RLock and sends with `select default`, so closing the channel outside
+	// the map-mutation lock would race with an in-flight send and panic
+	// with "send on closed channel". Deleting from the map under Lock is
+	// sufficient — the channel is unreachable and GC'd once this handler
+	// returns.
 	defer func() {
 		s.mu.Lock()
 		delete(s.subscribers, id)
 		s.mu.Unlock()
-		close(ch)
 	}()
 
 	for {
@@ -152,7 +157,13 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case event := <-ch:
-			data, _ := json.Marshal(event)
+			data, err := json.Marshal(event)
+			if err != nil {
+				// Skip this event rather than emitting "data: null" which
+				// poisons the stream for clients that parse strictly.
+				s.log.V(1).Info("skipping SSE event with unmarshalable Data", "type", event.Type)
+				continue
+			}
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
 			flusher.Flush()
 		}
@@ -211,32 +222,50 @@ func (s *Server) Start(ctx context.Context) error {
 	// subscribers. Runs until ctx is canceled.
 	go s.bridgePipelineEvents(ctx)
 
+	s.log.Info("Starting dashboard", "port", s.port, "basePath", s.basePath)
+
+	// Run ListenAndServe in a goroutine so the returned error can be joined
+	// with Shutdown completion: the manager treats Start's return as
+	// "runnable stopped" and without the join Start returns before Shutdown
+	// finishes draining in-flight handlers.
+	serveErr := make(chan error, 1)
 	go func() {
-		<-ctx.Done()
+		serveErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serveErr:
+		if err != nil && err != http.ErrServerClosed {
+			return err
+		}
+		return nil
+	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			s.log.Error(err, "Dashboard server shutdown error")
 		}
-	}()
-
-	s.log.Info("Starting dashboard", "port", s.port, "basePath", s.basePath)
-	return server.ListenAndServe()
+		<-serveErr // wait for ListenAndServe to return after Shutdown.
+		return nil
+	}
 }
 
 // NeedLeaderElection returns false so the dashboard runs on all replicas.
 func (s *Server) NeedLeaderElection() bool { return false }
 
-// backgroundContext returns the server-lifecycle context set by Start(), or
-// context.Background() as a fallback when Start has not yet been called
-// (e.g. in certain test paths). Background goroutines spawned from HTTP
-// handlers should use this rather than context.Background() directly so
-// they observe server shutdown.
+// backgroundContext returns the server-lifecycle context set by Start(),
+// or a pre-cancelled context when Start has not yet been called (test
+// paths, direct handler invocations). Returning context.Background() there
+// would silently re-introduce the exact long-lived-goroutine leak the
+// startCtx plumbing is meant to close — so instead we return a cancelled
+// context and let sleepCtx-style goroutines bail out on their first check.
 func (s *Server) backgroundContext() context.Context {
 	s.startCtxMu.RLock()
 	defer s.startCtxMu.RUnlock()
 	if s.startCtx == nil {
-		return context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
 	}
 	return s.startCtx
 }
