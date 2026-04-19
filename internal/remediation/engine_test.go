@@ -85,8 +85,11 @@ func TestExtractFixes_MarkdownCodeBlock(t *testing.T) {
 	}
 }
 
-func TestExtractFixes_Fallback(t *testing.T) {
-	// Unstructured response should fall back gracefully.
+func TestExtractFixes_UnstructuredResponseRejected(t *testing.T) {
+	// Unstructured LLM prose MUST NOT be committed as a patch. The previous
+	// behavior wrapped the raw text as a single fix — this test guards
+	// against regressing to that by asserting the plan is rejected with
+	// zero fixes when the LLM fails to return the structured JSON shape.
 	llmResponse := "You should add securityContext with runAsNonRoot: true to the container spec."
 
 	finding := &scanner.Finding{
@@ -98,17 +101,52 @@ func TestExtractFixes_Fallback(t *testing.T) {
 
 	fixes, analysis, riskScore := extractFixes(llmResponse, finding)
 
-	if len(fixes) != 1 {
-		t.Fatalf("Expected 1 fallback fix, got %d", len(fixes))
-	}
-	if fixes[0].Patch != llmResponse {
-		t.Error("Expected raw LLM response as patch in fallback mode")
+	if len(fixes) != 0 {
+		t.Fatalf("Expected 0 fixes from unstructured response, got %d", len(fixes))
 	}
 	if analysis != llmResponse {
-		t.Error("Expected raw LLM response as analysis in fallback mode")
+		t.Errorf("Expected raw LLM content preserved as analysis for operator visibility, got %q", analysis)
 	}
 	if riskScore != -1 {
-		t.Errorf("Expected -1 sentinel risk score in fallback, got %d", riskScore)
+		t.Errorf("Expected -1 sentinel risk score, got %d", riskScore)
+	}
+}
+
+func TestExtractFixes_UnsafeFilePathDropped(t *testing.T) {
+	// Guard against LLM-emitted path traversal and absolute paths. Each
+	// fix carries a legit file plus an unsafe variant; validated output
+	// must contain only the safe one.
+	llmResponse := `{
+		"analysis": "Add RBAC constraints.",
+		"fixes": [
+			{"file_path": "k8s/ns/role.yaml", "description": "ok", "patch": "x", "operation": "update"},
+			{"file_path": "../secret.yaml",  "description": "bad", "patch": "x", "operation": "update"},
+			{"file_path": "/etc/passwd",     "description": "bad", "patch": "x", "operation": "delete"}
+		]
+	}`
+	finding := &scanner.Finding{RuleType: "rbac-audit"}
+	fixes, _, _ := extractFixes(llmResponse, finding)
+	if len(fixes) != 1 {
+		t.Fatalf("expected only the safe fix to survive validation, got %d fixes", len(fixes))
+	}
+	if fixes[0].FilePath != "k8s/ns/role.yaml" {
+		t.Errorf("unexpected surviving path: %q", fixes[0].FilePath)
+	}
+}
+
+func TestExtractFixes_UnknownOperationDropped(t *testing.T) {
+	// Unknown operations previously defaulted to "update" silently — we now
+	// drop the fix rather than invent an operation the LLM never asked for.
+	llmResponse := `{
+		"analysis": "Try something weird.",
+		"fixes": [
+			{"file_path": "k8s/a.yaml", "description": "patch", "patch": "x", "operation": "patch"}
+		]
+	}`
+	finding := &scanner.Finding{RuleType: "test"}
+	fixes, _, _ := extractFixes(llmResponse, finding)
+	if len(fixes) != 0 {
+		t.Fatalf("expected unknown operation to be dropped, got %d fixes", len(fixes))
 	}
 }
 

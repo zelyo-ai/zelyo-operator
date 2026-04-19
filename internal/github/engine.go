@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -112,9 +113,13 @@ func (e *GitHubEngine) CreatePullRequest(ctx context.Context, pr *gitops.PullReq
 
 // GetFile implements gitops.Engine.GetFile.
 func (e *GitHubEngine) GetFile(ctx context.Context, owner, repo, path, ref string) ([]byte, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", e.baseURL, owner, repo, path, ref)
+	escaped, err := safeRepoPath(path)
+	if err != nil {
+		return nil, err
+	}
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", e.baseURL, owner, repo, escaped, url.QueryEscape(ref))
 
-	body, err := e.doRequest(ctx, http.MethodGet, url, nil)
+	body, err := e.doRequest(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("getting file %s: %w", path, err)
 	}
@@ -224,11 +229,15 @@ func (e *GitHubEngine) createRef(ctx context.Context, owner, repo, ref, sha stri
 }
 
 func (e *GitHubEngine) createOrUpdateFile(ctx context.Context, owner, repo, path, content, branch string) error {
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s", e.baseURL, owner, repo, path)
+	escaped, err := safeRepoPath(path)
+	if err != nil {
+		return err
+	}
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", e.baseURL, owner, repo, escaped)
 
 	// Check if file exists to get its SHA (required for updates).
 	var existingSHA string
-	getURL := fmt.Sprintf("%s?ref=%s", url, branch)
+	getURL := fmt.Sprintf("%s?ref=%s", reqURL, url.QueryEscape(branch))
 	body, err := e.doRequest(ctx, http.MethodGet, getURL, nil)
 	if err == nil {
 		var existing struct {
@@ -248,15 +257,19 @@ func (e *GitHubEngine) createOrUpdateFile(ctx context.Context, owner, repo, path
 		payload["sha"] = existingSHA
 	}
 
-	_, err = e.doRequest(ctx, http.MethodPut, url, payload)
+	_, err = e.doRequest(ctx, http.MethodPut, reqURL, payload)
 	return err
 }
 
 func (e *GitHubEngine) deleteFile(ctx context.Context, owner, repo, path, branch string) error {
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s", e.baseURL, owner, repo, path)
+	escaped, err := safeRepoPath(path)
+	if err != nil {
+		return err
+	}
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", e.baseURL, owner, repo, escaped)
 
 	// Get file SHA.
-	getURL := fmt.Sprintf("%s?ref=%s", url, branch)
+	getURL := fmt.Sprintf("%s?ref=%s", reqURL, url.QueryEscape(branch))
 	body, err := e.doRequest(ctx, http.MethodGet, getURL, nil)
 	if err != nil {
 		return fmt.Errorf("getting file SHA for delete: %w", err)
@@ -273,7 +286,7 @@ func (e *GitHubEngine) deleteFile(ctx context.Context, owner, repo, path, branch
 		"sha":     existing.SHA,
 		"branch":  branch,
 	}
-	_, err = e.doRequest(ctx, http.MethodDelete, url, payload)
+	_, err = e.doRequest(ctx, http.MethodDelete, reqURL, payload)
 	return err
 }
 
@@ -358,6 +371,35 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// safeRepoPath validates a repository-relative file path supplied by the
+// LLM remediation planner (or, indirectly, by a caller whose Finding
+// metadata we cannot trust) and returns a URL-escaped form suitable for
+// embedding in a GitHub contents API request. We reject anything that
+// could escape the repo root — absolute paths, backslashes, or any
+// "../" / "./"  segment — then PathEscape each remaining segment so
+// spaces, percent-encodings, and other reserved characters in a legit
+// path don't corrupt the URL.
+func safeRepoPath(p string) (string, error) {
+	if p == "" {
+		return "", fmt.Errorf("empty repository path")
+	}
+	if strings.ContainsRune(p, '\\') {
+		return "", fmt.Errorf("backslash in repository path: %q", p)
+	}
+	if strings.HasPrefix(p, "/") {
+		return "", fmt.Errorf("absolute repository path: %q", p)
+	}
+	segments := strings.Split(p, "/")
+	escaped := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		if seg == "" || seg == "." || seg == ".." {
+			return "", fmt.Errorf("unsafe segment %q in repository path %q", seg, p)
+		}
+		escaped = append(escaped, url.PathEscape(seg))
+	}
+	return strings.Join(escaped, "/"), nil
 }
 
 // base64Encode encodes bytes to base64 string.
