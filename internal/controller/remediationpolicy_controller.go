@@ -263,6 +263,19 @@ func (r *RemediationPolicyReconciler) processIncidents(
 			"riskScore", plan.RiskScore,
 			"dryRun", policy.Spec.DryRun)
 
+		// spec.dryRun is a per-policy preview switch: generate the plan so
+		// operators can review fix count / risk, but do not submit a PR and
+		// do not resolve the incident — a later reconcile with dryRun=false
+		// should still pick it up and remediate. Gating here (rather than
+		// passing a per-call strategy override into the engine) keeps the
+		// resolve + counter increments below from firing on a preview.
+		if policy.Spec.DryRun {
+			r.Recorder.Event(policy, corev1.EventTypeNormal, "DryRunPreview",
+				fmt.Sprintf("Dry-run: would remediate incident %s (fixes=%d, risk=%d) — no PR opened",
+					incident.ID, len(plan.Fixes), plan.RiskScore))
+			continue
+		}
+
 		// Apply the plan (strategy is configured on the remediation engine).
 		result, err := r.RemediationEngine.ApplyPlan(ctx, plan, repoOwner, repoName)
 		if err != nil {
