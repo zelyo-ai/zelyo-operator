@@ -195,11 +195,19 @@ func (r *RemediationPolicyReconciler) processIncidents(
 
 	// Build target-policy allowlist. Empty spec.targetPolicies means "all
 	// SecurityPolicies apply" — skip the scope filter entirely.
-	var targetSet map[string]struct{}
+	//
+	// Keyed by NamespacedName because SecurityPolicy is a namespaced CRD:
+	// two tenants can legally register policies with the same name, and
+	// matching on name alone would let an incident from team-b/baseline
+	// satisfy team-a's target "baseline". The upstream validation loop
+	// already resolves targetPolicies against policy.Namespace, so using
+	// that namespace here keeps the runtime gate consistent with what
+	// was actually validated.
+	var targetSet map[types.NamespacedName]struct{}
 	if len(policy.Spec.TargetPolicies) > 0 {
-		targetSet = make(map[string]struct{}, len(policy.Spec.TargetPolicies))
+		targetSet = make(map[types.NamespacedName]struct{}, len(policy.Spec.TargetPolicies))
 		for _, name := range policy.Spec.TargetPolicies {
-			targetSet[name] = struct{}{}
+			targetSet[types.NamespacedName{Name: name, Namespace: policy.Namespace}] = struct{}{}
 		}
 	}
 
@@ -260,7 +268,7 @@ func (r *RemediationPolicyReconciler) processIncidents(
 // processIncidents to keep that function within the gocyclo budget.
 func (r *RemediationPolicyReconciler) incidentInScope(
 	incident *correlator.Incident,
-	targetSet map[string]struct{},
+	targetSet map[types.NamespacedName]struct{},
 	minSev int,
 ) bool {
 	if targetSet != nil && !incidentMatchesTargets(incident, targetSet) {
@@ -332,18 +340,23 @@ func (r *RemediationPolicyReconciler) remediateIncident(
 // event from a SecurityPolicy in the given allowlist. An incident may be a
 // correlation of events from multiple SecurityPolicies on the same
 // resource; if any one of them is targeted, the RemediationPolicy applies.
-// Events without a SecurityPolicy (e.g. anomalies, deployments) never
-// satisfy the scope gate on their own — only SecurityPolicy-originated
-// events do.
-func incidentMatchesTargets(incident *correlator.Incident, targets map[string]struct{}) bool {
+//
+// Matching is on the (name, namespace) pair because SecurityPolicy is a
+// namespaced CRD. An event missing either half is treated as unmatched —
+// anomaly/deployment events legitimately have both blank, and a
+// SecurityPolicy-originated event with an empty namespace is malformed
+// (see securitypolicy_controller.ingestFindingsToCorrelator) and must
+// not be allowed to satisfy the gate by coincidence.
+func incidentMatchesTargets(incident *correlator.Incident, targets map[types.NamespacedName]struct{}) bool {
 	if incident == nil || len(targets) == 0 {
 		return false
 	}
 	for _, ev := range incident.Events {
-		if ev == nil || ev.SecurityPolicy == "" {
+		if ev == nil || ev.SecurityPolicy == "" || ev.SecurityPolicyNamespace == "" {
 			continue
 		}
-		if _, ok := targets[ev.SecurityPolicy]; ok {
+		key := types.NamespacedName{Name: ev.SecurityPolicy, Namespace: ev.SecurityPolicyNamespace}
+		if _, ok := targets[key]; ok {
 			return true
 		}
 	}

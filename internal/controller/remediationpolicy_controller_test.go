@@ -157,28 +157,30 @@ var _ = Describe("RemediationPolicy Controller", func() {
 			// default "high" severity gate with room to spare.
 			for i := 0; i < 2; i++ {
 				corr.Ingest(&correlator.Event{
-					Type:           correlator.EventSecurityViolation,
-					Source:         "securitypolicy/" + targetedSP,
-					SecurityPolicy: targetedSP,
-					Severity:       zelyov1alpha1.SeverityCritical,
-					Namespace:      ns,
-					Resource:       targetedPod,
-					ResourceKind:   "Pod",
-					Message:        "privileged container",
+					Type:                    correlator.EventSecurityViolation,
+					Source:                  "securitypolicy/" + targetedSP,
+					SecurityPolicy:          targetedSP,
+					SecurityPolicyNamespace: ns,
+					Severity:                zelyov1alpha1.SeverityCritical,
+					Namespace:               ns,
+					Resource:                targetedPod,
+					ResourceKind:            "Pod",
+					Message:                 "privileged container",
 				})
 			}
 			// Two events on pod-other tagged with a NON-targeted SecurityPolicy
 			// → forms a second correlated incident that must be filtered out.
 			for i := 0; i < 2; i++ {
 				corr.Ingest(&correlator.Event{
-					Type:           correlator.EventSecurityViolation,
-					Source:         "securitypolicy/" + otherSP,
-					SecurityPolicy: otherSP,
-					Severity:       zelyov1alpha1.SeverityCritical,
-					Namespace:      ns,
-					Resource:       otherPod,
-					ResourceKind:   "Pod",
-					Message:        "privileged container",
+					Type:                    correlator.EventSecurityViolation,
+					Source:                  "securitypolicy/" + otherSP,
+					SecurityPolicy:          otherSP,
+					SecurityPolicyNamespace: ns,
+					Severity:                zelyov1alpha1.SeverityCritical,
+					Namespace:               ns,
+					Resource:                otherPod,
+					ResourceKind:            "Pod",
+					Message:                 "privileged container",
 				})
 			}
 			Expect(corr.GetOpenIncidents()).To(HaveLen(2))
@@ -218,6 +220,72 @@ var _ = Describe("RemediationPolicy Controller", func() {
 			Expect(corr.GetOpenIncidents()).To(HaveLen(2))
 		})
 
+		It("does not leak scope across namespaces when policy names collide", func() {
+			// SecurityPolicy is a namespaced CRD; two tenants can legally
+			// register policies named "only-one". A RemediationPolicy in
+			// "default" must only see events from its own-namespace
+			// "only-one", not from another namespace's "only-one". The
+			// original fix matched on name alone and was still vulnerable
+			// to this exact leak.
+			By("creating the targeted SecurityPolicy in the RemediationPolicy's own namespace")
+			Expect(k8sClient.Create(ctx, newTestSecurityPolicy(targetedSP, ns))).To(Succeed())
+
+			By("creating the referenced GitOpsRepository")
+			Expect(k8sClient.Create(ctx, newTestGitOpsRepo(repoName, ns))).To(Succeed())
+
+			By("creating the RemediationPolicy scoped to only-one in default")
+			Expect(k8sClient.Create(ctx, &zelyov1alpha1.RemediationPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: rpName, Namespace: ns},
+				Spec: zelyov1alpha1.RemediationPolicySpec{
+					GitOpsRepository: repoName,
+					TargetPolicies:   []string{targetedSP},
+					SeverityFilter:   zelyov1alpha1.SeverityHigh,
+					MaxConcurrentPRs: 10,
+				},
+			})).To(Succeed())
+
+			By("injecting an incident tagged with a same-named policy from another namespace")
+			corr := correlator.NewEngine(&correlator.Config{CorrelationWindow: 5 * time.Minute})
+			// Two events from "team-b/only-one" — same name as the target
+			// but foreign namespace. Scope gate MUST reject.
+			for i := 0; i < 2; i++ {
+				corr.Ingest(&correlator.Event{
+					Type:                    correlator.EventSecurityViolation,
+					SecurityPolicy:          targetedSP,
+					SecurityPolicyNamespace: "team-b",
+					Severity:                zelyov1alpha1.SeverityCritical,
+					Namespace:               ns, // pod namespace — unrelated to policy namespace
+					Resource:                "cross-ns-pod",
+					ResourceKind:            "Pod",
+					Message:                 "privileged container",
+				})
+			}
+			Expect(corr.GetOpenIncidents()).To(HaveLen(1))
+
+			remEngine := remediation.NewEngine(
+				nil, nil,
+				remediation.EngineConfig{Strategy: remediation.StrategyGitOpsPR},
+				logr.Discard(),
+			)
+			recorder := record.NewFakeRecorder(100)
+			reconciler := &RemediationPolicyReconciler{
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				Recorder:          recorder,
+				CorrelatorEngine:  corr,
+				RemediationEngine: remEngine,
+			}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: rpName, Namespace: ns},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("asserting the foreign-namespace incident was filtered before GeneratePlan")
+			planFailures := drainEventsContaining(recorder, "LLM plan generation failed for incident")
+			Expect(planFailures).To(BeEmpty(),
+				"foreign-namespace incident must not reach GeneratePlan; got: %v", planFailures)
+		})
+
 		It("remediates every incident when targetPolicies is empty", func() {
 			By("creating the referenced GitOpsRepository")
 			Expect(k8sClient.Create(ctx, newTestGitOpsRepo(repoName, ns))).To(Succeed())
@@ -236,17 +304,19 @@ var _ = Describe("RemediationPolicy Controller", func() {
 			corr := correlator.NewEngine(&correlator.Config{CorrelationWindow: 5 * time.Minute})
 			for i := 0; i < 2; i++ {
 				corr.Ingest(&correlator.Event{
-					Type:           correlator.EventSecurityViolation,
-					SecurityPolicy: targetedSP,
-					Severity:       zelyov1alpha1.SeverityCritical,
-					Namespace:      ns, Resource: targetedPod,
+					Type:                    correlator.EventSecurityViolation,
+					SecurityPolicy:          targetedSP,
+					SecurityPolicyNamespace: ns,
+					Severity:                zelyov1alpha1.SeverityCritical,
+					Namespace:               ns, Resource: targetedPod,
 					ResourceKind: "Pod", Message: "x",
 				})
 				corr.Ingest(&correlator.Event{
-					Type:           correlator.EventSecurityViolation,
-					SecurityPolicy: otherSP,
-					Severity:       zelyov1alpha1.SeverityCritical,
-					Namespace:      ns, Resource: otherPod,
+					Type:                    correlator.EventSecurityViolation,
+					SecurityPolicy:          otherSP,
+					SecurityPolicyNamespace: ns,
+					Severity:                zelyov1alpha1.SeverityCritical,
+					Namespace:               ns, Resource: otherPod,
 					ResourceKind: "Pod", Message: "y",
 				})
 			}
