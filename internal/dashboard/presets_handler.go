@@ -14,6 +14,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	zelyov1alpha1 "github.com/zelyo-ai/zelyo-operator/api/v1alpha1"
 	"github.com/zelyo-ai/zelyo-operator/internal/events"
 )
 
@@ -50,7 +53,7 @@ func (s *Server) dispatchPresetRoute(w http.ResponseWriter, r *http.Request) {
 // handlePresets serves the preset catalog joined with per-preset runtime
 // state (not_enabled / proposing / pending_merge / enabled) plus cluster
 // config capabilities so the UI can pick the right default action.
-func (s *Server) handlePresets(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handlePresets(w http.ResponseWriter, r *http.Request) {
 	store := DefaultPresetStore()
 	presets := Presets()
 	views := make([]PresetView, 0, len(presets))
@@ -62,16 +65,67 @@ func (s *Server) handlePresets(w http.ResponseWriter, _ *http.Request) {
 	}
 	s.writeJSON(w, map[string]interface{}{
 		"presets": views,
-		"config":  store.ConfigStatus(),
+		"config":  s.resolveConfigStatus(r.Context()),
 	})
+}
+
+// resolveConfigStatus returns the cluster config snapshot the UI renders,
+// deriving GitOpsConfigured/GitOpsRepo live from GitOpsRepositoryList so
+// the Compliance badge reflects actual cluster state instead of a cached
+// demo default. SealedSecretsReady and DemoMode still come from the store.
+func (s *Server) resolveConfigStatus(ctx context.Context) ConfigStatus {
+	cfg := DefaultPresetStore().ConfigStatus()
+	if s.client == nil {
+		return cfg
+	}
+	repos := &zelyov1alpha1.GitOpsRepositoryList{}
+	if err := s.client.List(ctx, repos, &client.ListOptions{Limit: 5}); err != nil {
+		// A List error is not necessarily "not configured" — surface it in
+		// logs but don't flip the badge, so a transient API hiccup doesn't
+		// flicker the UI from connected → disconnected.
+		s.log.V(1).Info("listing GitOpsRepositories for config status", "error", err.Error())
+		return cfg
+	}
+	if len(repos.Items) == 0 {
+		// Live state is the source of truth. If the list is empty, the
+		// badge must read "not connected" even if the store snapshot
+		// (SetConfigStatus, or any future seed) carried stale values.
+		cfg.GitOpsConfigured = false
+		cfg.GitOpsRepo = ""
+		return cfg
+	}
+	cfg.GitOpsConfigured = true
+	cfg.GitOpsRepo = displayRepoSlug(&repos.Items[0])
+	return cfg
+}
+
+// displayRepoSlug returns a short "owner/repo" style identifier for the
+// Compliance badge. Falls back to the CR name if the URL can't be parsed.
+func displayRepoSlug(repo *zelyov1alpha1.GitOpsRepository) string {
+	url := strings.TrimSpace(repo.Spec.URL)
+	url = strings.TrimSuffix(url, ".git")
+	// Strip scheme://host/ or user@host: prefixes to land on the path segment.
+	if i := strings.Index(url, "://"); i >= 0 {
+		rest := url[i+3:]
+		if j := strings.Index(rest, "/"); j >= 0 {
+			url = rest[j+1:]
+		}
+	}
+	if i := strings.LastIndex(url, ":"); i >= 0 && strings.Contains(url[:i], "@") {
+		url = url[i+1:]
+	}
+	if url == "" {
+		return repo.Name
+	}
+	return url
 }
 
 // handlePresetPreview returns the preset + rendered unified diff so the
 // drawer can show exactly what will be committed or applied.
 func (s *Server) handlePresetPreview(w http.ResponseWriter, r *http.Request) {
 	id := presetIDFromPath(r.URL.Path, "/api/v1/presets/")
-	if id == "" || strings.Contains(id, "/") {
-		s.writeError(w, http.StatusBadRequest, "preset id required")
+	if !validPresetID(id) {
+		s.writeError(w, http.StatusBadRequest, "invalid preset id")
 		return
 	}
 	p := FindPreset(id)
@@ -93,6 +147,10 @@ func (s *Server) handlePresetPropose(w http.ResponseWriter, r *http.Request) {
 	}
 	id := presetIDFromPath(r.URL.Path, "/api/v1/presets/")
 	id = strings.TrimSuffix(id, "/propose")
+	if !validPresetID(id) {
+		s.writeError(w, http.StatusBadRequest, "invalid preset id")
+		return
+	}
 	p := FindPreset(id)
 	if p == nil {
 		s.writeError(w, http.StatusNotFound, "preset not found")
@@ -100,7 +158,7 @@ func (s *Server) handlePresetPropose(w http.ResponseWriter, r *http.Request) {
 	}
 
 	store := DefaultPresetStore()
-	cfg := store.ConfigStatus()
+	cfg := s.resolveConfigStatus(r.Context())
 	if !cfg.GitOpsConfigured {
 		s.writeError(w, http.StatusPreconditionFailed, "no GitOps repository configured — use /apply instead or connect a repo")
 		return
@@ -147,30 +205,33 @@ func (s *Server) handlePresetPropose(w http.ResponseWriter, r *http.Request) {
 		FilesChanged: filePaths(p.Files),
 	})
 
-	// Flip local state and fire pipeline events.
-	status := store.update(p.ID, func(st *PresetStatus) {
+	// Flip local state and fire pipeline events. Do the full
+	// Proposing → PendingMerge transition BEFORE spawning the demo
+	// goroutine so the goroutine's later "merged → enabled" writes can't
+	// race with this handler's sequential updates.
+	store.update(p.ID, func(st *PresetStatus) {
 		st.State = PresetStateProposing
 		t := now
 		st.ProposedAt = &t
 		st.PRURL = prURL
 		st.Message = "Drafting PR…"
 	})
+	status := store.update(p.ID, func(st *PresetStatus) {
+		st.State = PresetStatePendingMerge
+		st.Message = "Waiting for PR review"
+	})
+
 	events.EmitConfigPRDrafted(p.Name, prURL, cfg.GitOpsRepo, p.Description, len(p.Files))
 	events.EmitPullRequestOpened(prURL, cfg.GitOpsRepo, len(p.Files))
 
 	// In demo mode: auto-merge after a short delay so the Pipeline visibly
 	// progresses through open → merged → enabled without human action.
-	// Use a background context — the preset lifecycle outlives the inbound
-	// HTTP request that triggered it. We still cooperatively return early
-	// on shutdown (ctx.Done in the server Start).
+	// Use the server's long-lived context (not the per-request one, which
+	// dies when the client disconnects) so the goroutine exits cleanly on
+	// server shutdown instead of mutating shared state into a race.
 	if cfg.DemoMode {
-		go s.demoAdvancePreset(context.Background(), p, prURL)
+		go s.demoAdvancePreset(s.backgroundContext(), p, prURL, cfg.GitOpsRepo)
 	}
-
-	store.update(p.ID, func(st *PresetStatus) {
-		st.State = PresetStatePendingMerge
-		st.Message = "Waiting for PR review"
-	})
 
 	s.writeJSON(w, map[string]interface{}{
 		"status": status,
@@ -188,6 +249,10 @@ func (s *Server) handlePresetApply(w http.ResponseWriter, r *http.Request) {
 	}
 	id := presetIDFromPath(r.URL.Path, "/api/v1/presets/")
 	id = strings.TrimSuffix(id, "/apply")
+	if !validPresetID(id) {
+		s.writeError(w, http.StatusBadRequest, "invalid preset id")
+		return
+	}
 	p := FindPreset(id)
 	if p == nil {
 		s.writeError(w, http.StatusNotFound, "preset not found")
@@ -212,8 +277,8 @@ func (s *Server) handlePresetApply(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePresetStatus(w http.ResponseWriter, r *http.Request) {
 	id := presetIDFromPath(r.URL.Path, "/api/v1/presets/")
 	id = strings.TrimSuffix(id, "/status")
-	if id == "" {
-		s.writeError(w, http.StatusBadRequest, "preset id required")
+	if !validPresetID(id) {
+		s.writeError(w, http.StatusBadRequest, "invalid preset id")
 		return
 	}
 	if FindPreset(id) == nil {
@@ -229,8 +294,9 @@ func (s *Server) handlePresetStatus(w http.ResponseWriter, r *http.Request) {
 //
 // ctx lets the goroutine exit cleanly on server shutdown instead of
 // continuing to mutate shared state after the process has started to
-// unwind.
-func (s *Server) demoAdvancePreset(ctx context.Context, p *Preset, prURL string) {
+// unwind. repo is captured at propose time so the EmitPullRequestMerged
+// label stays consistent even if the live ConfigStatus changes mid-flight.
+func (s *Server) demoAdvancePreset(ctx context.Context, p *Preset, prURL, repo string) {
 	//nolint:gosec // cadence jitter only, non-cryptographic.
 	rng := rand.New(rand.NewSource(time.Now().UnixNano() ^ int64(len(p.ID))))
 
@@ -238,7 +304,7 @@ func (s *Server) demoAdvancePreset(ctx context.Context, p *Preset, prURL string)
 		return
 	}
 	events.DefaultRemediationStore().MarkMerged(prURL, time.Now().UTC())
-	events.EmitPullRequestMerged(prURL, DefaultPresetStore().ConfigStatus().GitOpsRepo)
+	events.EmitPullRequestMerged(prURL, repo)
 
 	if !sleepCtx(ctx, 1400*time.Millisecond) {
 		return
@@ -281,6 +347,26 @@ func presetIDFromPath(path, _ string) string {
 		return path[idx+len(marker):]
 	}
 	return ""
+}
+
+// validPresetID enforces the catalog's own ID shape (lowercase letters,
+// digits, dashes, 1–64 chars). This keeps untrusted path input out of the
+// preset catalog lookup, the remediation store key space, and any
+// downstream logging that echoes the ID back.
+func validPresetID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, c := range id {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // mockPRURL returns a collision-resistant demo PR URL. The PR number is

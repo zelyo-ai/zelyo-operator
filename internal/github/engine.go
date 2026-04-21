@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -112,9 +113,13 @@ func (e *GitHubEngine) CreatePullRequest(ctx context.Context, pr *gitops.PullReq
 
 // GetFile implements gitops.Engine.GetFile.
 func (e *GitHubEngine) GetFile(ctx context.Context, owner, repo, path, ref string) ([]byte, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", e.baseURL, owner, repo, path, ref)
+	escaped, err := safeRepoPath(path)
+	if err != nil {
+		return nil, fmt.Errorf("validating repository path for get %q: %w", path, err)
+	}
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", e.baseURL, owner, repo, escaped, url.QueryEscape(ref))
 
-	body, err := e.doRequest(ctx, http.MethodGet, url, nil)
+	body, err := e.doRequest(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("getting file %s: %w", path, err)
 	}
@@ -144,9 +149,9 @@ func (e *GitHubEngine) GetFile(ctx context.Context, owner, repo, path, ref strin
 
 // ListOpenPRs implements gitops.Engine.ListOpenPRs.
 func (e *GitHubEngine) ListOpenPRs(ctx context.Context, owner, repo string) ([]gitops.PullRequestResult, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open&per_page=100", e.baseURL, owner, repo)
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open&per_page=100", e.baseURL, owner, repo)
 
-	body, err := e.doRequest(ctx, http.MethodGet, url, nil)
+	body, err := e.doRequest(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing open PRs: %w", err)
 	}
@@ -200,8 +205,8 @@ func (e *GitHubEngine) Close() error {
 // ── Internal GitHub API helpers ──
 
 func (e *GitHubEngine) getRef(ctx context.Context, owner, repo, ref string) (string, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/git/ref/%s", e.baseURL, owner, repo, ref)
-	body, err := e.doRequest(ctx, http.MethodGet, url, nil)
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/git/ref/%s", e.baseURL, owner, repo, ref)
+	body, err := e.doRequest(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -217,18 +222,22 @@ func (e *GitHubEngine) getRef(ctx context.Context, owner, repo, ref string) (str
 }
 
 func (e *GitHubEngine) createRef(ctx context.Context, owner, repo, ref, sha string) error {
-	url := fmt.Sprintf("%s/repos/%s/%s/git/refs", e.baseURL, owner, repo)
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/git/refs", e.baseURL, owner, repo)
 	payload := map[string]string{"ref": ref, "sha": sha}
-	_, err := e.doRequest(ctx, http.MethodPost, url, payload)
+	_, err := e.doRequest(ctx, http.MethodPost, reqURL, payload)
 	return err
 }
 
 func (e *GitHubEngine) createOrUpdateFile(ctx context.Context, owner, repo, path, content, branch string) error {
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s", e.baseURL, owner, repo, path)
+	escaped, err := safeRepoPath(path)
+	if err != nil {
+		return fmt.Errorf("validating repository path for upsert %q: %w", path, err)
+	}
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", e.baseURL, owner, repo, escaped)
 
 	// Check if file exists to get its SHA (required for updates).
 	var existingSHA string
-	getURL := fmt.Sprintf("%s?ref=%s", url, branch)
+	getURL := fmt.Sprintf("%s?ref=%s", reqURL, url.QueryEscape(branch))
 	body, err := e.doRequest(ctx, http.MethodGet, getURL, nil)
 	if err == nil {
 		var existing struct {
@@ -248,15 +257,19 @@ func (e *GitHubEngine) createOrUpdateFile(ctx context.Context, owner, repo, path
 		payload["sha"] = existingSHA
 	}
 
-	_, err = e.doRequest(ctx, http.MethodPut, url, payload)
+	_, err = e.doRequest(ctx, http.MethodPut, reqURL, payload)
 	return err
 }
 
 func (e *GitHubEngine) deleteFile(ctx context.Context, owner, repo, path, branch string) error {
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s", e.baseURL, owner, repo, path)
+	escaped, err := safeRepoPath(path)
+	if err != nil {
+		return fmt.Errorf("validating repository path for delete %q: %w", path, err)
+	}
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", e.baseURL, owner, repo, escaped)
 
 	// Get file SHA.
-	getURL := fmt.Sprintf("%s?ref=%s", url, branch)
+	getURL := fmt.Sprintf("%s?ref=%s", reqURL, url.QueryEscape(branch))
 	body, err := e.doRequest(ctx, http.MethodGet, getURL, nil)
 	if err != nil {
 		return fmt.Errorf("getting file SHA for delete: %w", err)
@@ -273,12 +286,12 @@ func (e *GitHubEngine) deleteFile(ctx context.Context, owner, repo, path, branch
 		"sha":     existing.SHA,
 		"branch":  branch,
 	}
-	_, err = e.doRequest(ctx, http.MethodDelete, url, payload)
+	_, err = e.doRequest(ctx, http.MethodDelete, reqURL, payload)
 	return err
 }
 
 func (e *GitHubEngine) openPR(ctx context.Context, pr *gitops.PullRequest) (*gitops.PullRequestResult, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/pulls", e.baseURL, pr.RepoOwner, pr.RepoName)
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls", e.baseURL, pr.RepoOwner, pr.RepoName)
 	payload := map[string]interface{}{
 		"title": pr.Title,
 		"body":  pr.Body,
@@ -286,7 +299,7 @@ func (e *GitHubEngine) openPR(ctx context.Context, pr *gitops.PullRequest) (*git
 		"base":  pr.BaseBranch,
 	}
 
-	body, err := e.doRequest(ctx, http.MethodPost, url, payload)
+	body, err := e.doRequest(ctx, http.MethodPost, reqURL, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -309,14 +322,14 @@ func (e *GitHubEngine) openPR(ctx context.Context, pr *gitops.PullRequest) (*git
 }
 
 func (e *GitHubEngine) addLabels(ctx context.Context, owner, repo string, prNumber int, labels []string) error {
-	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels", e.baseURL, owner, repo, prNumber)
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels", e.baseURL, owner, repo, prNumber)
 	payload := map[string]interface{}{"labels": labels}
-	_, err := e.doRequest(ctx, http.MethodPost, url, payload)
+	_, err := e.doRequest(ctx, http.MethodPost, reqURL, payload)
 	return err
 }
 
 // doRequest performs an authenticated HTTP request and returns the response body.
-func (e *GitHubEngine) doRequest(ctx context.Context, method, url string, payload interface{}) ([]byte, error) {
+func (e *GitHubEngine) doRequest(ctx context.Context, method, reqURL string, payload interface{}) ([]byte, error) {
 	var bodyReader io.Reader
 	if payload != nil {
 		jsonBody, err := json.Marshal(payload)
@@ -326,7 +339,7 @@ func (e *GitHubEngine) doRequest(ctx context.Context, method, url string, payloa
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -358,6 +371,35 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// safeRepoPath validates a repository-relative file path supplied by the
+// LLM remediation planner (or, indirectly, by a caller whose Finding
+// metadata we cannot trust) and returns a URL-escaped form suitable for
+// embedding in a GitHub contents API request. We reject anything that
+// could escape the repo root — absolute paths, backslashes, or any
+// "../" / "./"  segment — then PathEscape each remaining segment so
+// spaces, percent-encodings, and other reserved characters in a legit
+// path don't corrupt the URL.
+func safeRepoPath(p string) (string, error) {
+	if p == "" {
+		return "", fmt.Errorf("empty repository path")
+	}
+	if strings.ContainsRune(p, '\\') {
+		return "", fmt.Errorf("backslash in repository path: %q", p)
+	}
+	if strings.HasPrefix(p, "/") {
+		return "", fmt.Errorf("absolute repository path: %q", p)
+	}
+	segments := strings.Split(p, "/")
+	escaped := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		if seg == "" || seg == "." || seg == ".." {
+			return "", fmt.Errorf("unsafe segment %q in repository path %q", seg, p)
+		}
+		escaped = append(escaped, url.PathEscape(seg))
+	}
+	return strings.Join(escaped, "/"), nil
 }
 
 // base64Encode encodes bytes to base64 string.

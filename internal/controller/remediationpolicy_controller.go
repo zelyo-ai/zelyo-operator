@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -112,17 +113,36 @@ func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		fmt.Sprintf("GitOpsRepository %q is available (phase: %s)", repo.Name, repo.Status.Phase), policy.Generation)
 
 	// ── Step 2: Validate targeted SecurityPolicies ──
+	// Non-NotFound errors previously fell through silently; track missing
+	// and errored targets explicitly so we can mark a degraded condition
+	// and requeue with backoff.
+	var missingTargets []string
 	if len(policy.Spec.TargetPolicies) > 0 {
 		for _, policyName := range policy.Spec.TargetPolicies {
 			sp := &zelyov1alpha1.SecurityPolicy{}
 			spKey := types.NamespacedName{Name: policyName, Namespace: policy.Namespace}
 			if err := r.Get(ctx, spKey, sp); err != nil {
 				if errors.IsNotFound(err) {
+					missingTargets = append(missingTargets, policyName)
 					r.Recorder.Event(policy, corev1.EventTypeWarning, zelyov1alpha1.EventReasonReconcileError,
 						fmt.Sprintf("Target SecurityPolicy %q not found", policyName))
+					continue
 				}
+				return ctrl.Result{}, fmt.Errorf("fetching target SecurityPolicy %q: %w", policyName, err)
 			}
 		}
+	}
+	if len(missingTargets) > 0 {
+		conditions.MarkFalse(&policy.Status.Conditions, zelyov1alpha1.ConditionReady,
+			zelyov1alpha1.ReasonReconcileFailed,
+			fmt.Sprintf("target SecurityPolicies not found: %s", strings.Join(missingTargets, ", ")),
+			policy.Generation)
+		policy.Status.Phase = zelyov1alpha1.PhaseError
+		policy.Status.ObservedGeneration = policy.Generation
+		if err := r.Status().Update(ctx, policy); err != nil {
+			return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
+		}
+		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 	}
 
 	// ── Step 3: Query correlator for open incidents ──

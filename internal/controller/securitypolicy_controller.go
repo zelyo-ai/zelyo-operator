@@ -70,8 +70,10 @@ type SecurityPolicyReconciler struct {
 // +kubebuilder:rbac:groups=zelyo.ai,resources=securitypolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=zelyo.ai,resources=securitypolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=zelyo.ai,resources=securitypolicies/finalizers,verbs=update
+// +kubebuilder:rbac:groups=zelyo.ai,resources=notificationchannels,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile implements the main reconciliation loop for SecurityPolicy.

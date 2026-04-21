@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"os"
 	"time"
@@ -254,13 +255,20 @@ func (r *ZelyoConfigReconciler) reconcileRemediationEngine(ctx context.Context, 
 				if ns == "" {
 					ns = "zelyo-system"
 				}
+				// Events and Conditions are visible to anyone with namespace
+				// read access; upstream *APIError.Error() includes the raw
+				// provider response body which can echo request fragments or
+				// header prefixes on 401/403. Use a redacted status-code-only
+				// summary for any externally-visible surface. Full detail
+				// stays in the operator log above.
+				probeSummary := redactLLMProbeError(probeErr)
 				r.Recorder.Event(config, corev1.EventTypeWarning, "LLMKeyVerificationFailed",
-					fmt.Sprintf("LLM API key verification failed: %v. Verify your key with: kubectl get secret %s -n %s -o jsonpath='{.data.api-key}' | base64 -d",
-						probeErr, config.Spec.LLM.APIKeySecret, ns))
+					fmt.Sprintf("LLM API key verification failed: %s. Verify your key with: kubectl get secret %s -n %s -o jsonpath='{.data.api-key}' | base64 -d",
+						probeSummary, config.Spec.LLM.APIKeySecret, ns))
 				config.Status.LLMKeyStatus = "Invalid"
 				conditions.MarkFalse(&config.Status.Conditions, zelyov1alpha1.ConditionLLMKeyVerified,
 					zelyov1alpha1.ReasonLLMKeyInvalid,
-					fmt.Sprintf("API key probe failed: %v", probeErr), config.Generation)
+					fmt.Sprintf("API key probe failed: %s", probeSummary), config.Generation)
 			} else {
 				now := metav1.Now()
 				config.Status.LLMKeyStatus = "Verified"
@@ -296,4 +304,26 @@ func (r *ZelyoConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&zelyov1alpha1.ZelyoConfig{}).
 		Named("zelyoconfig").
 		Complete(r)
+}
+
+// redactLLMProbeError returns a short status-code-only summary for the
+// LLM probe error, suitable for Kubernetes Events and Condition messages.
+// The full error (including upstream provider response body) stays in the
+// operator log; Events are visible to any namespace reader and must not
+// carry raw upstream bodies that may echo prompts or header prefixes.
+func redactLLMProbeError(err error) string {
+	if err == nil {
+		return ""
+	}
+	var apiErr *llm.APIError
+	if stderrors.As(err, &apiErr) {
+		if apiErr.StatusCode == 429 {
+			return "rate limited by provider"
+		}
+		if apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
+			return fmt.Sprintf("provider returned HTTP %d (auth/config error)", apiErr.StatusCode)
+		}
+		return fmt.Sprintf("provider returned HTTP %d", apiErr.StatusCode)
+	}
+	return "provider unreachable"
 }

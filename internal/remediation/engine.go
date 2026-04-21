@@ -188,8 +188,24 @@ func (e *Engine) GeneratePlan(ctx context.Context, finding *scanner.Finding) (*P
 		CreatedAt: time.Now(),
 	}
 
-	// Parse fixes from LLM response (structured JSON or fallback to raw text).
+	// Parse fixes from LLM response. extractFixes enforces the strict JSON
+	// schema + per-fix validation (path safety, operation allowlist, size
+	// caps) and drops anything unsafe. If NOTHING survives, the plan has
+	// no remediation to apply — treat that as an error so the caller keeps
+	// the incident open for retry/manual triage. The previous behavior
+	// returned an empty plan with nil error, which led processIncidents
+	// to ResolveIncident() and silently close the case with nothing done.
+	//
+	// The error message deliberately does NOT include the raw LLM analysis:
+	// the controller emits GeneratePlan errors as Kubernetes Events
+	// (remediationpolicy_controller.go), and model output may echo secrets
+	// or large manifest snippets that must not land on a cluster-visible
+	// sink. The full analysis stays in the operator-level log via whatever
+	// log.Error wrapper the caller chooses.
 	fixes, analysis, llmRisk := extractFixes(resp.Content, finding)
+	if len(fixes) == 0 {
+		return nil, fmt.Errorf("remediation: no valid fixes produced from LLM response (analysis omitted)")
+	}
 	plan.Fixes = fixes
 	plan.LLMAnalysis = analysis
 
@@ -362,52 +378,115 @@ type llmFix struct {
 	Operation   string `json:"operation"`
 }
 
+// Upper bounds on LLM fix-plan content. These are defensive caps, not
+// business rules: a legitimate fix plan is nowhere near these limits, and
+// anything beyond them is either a hallucination or an attempted abuse
+// of the remediation pipeline.
+const (
+	maxFixesPerPlan       = 20
+	maxFixFilePathLen     = 512
+	maxFixPatchBytes      = 256 * 1024 // 256 KiB
+	maxFixDescriptionSize = 4 * 1024   // 4 KiB
+)
+
 func extractFixes(llmContent string, finding *scanner.Finding) (fixes []Fix, analysis string, riskScore int) {
-	// Try to parse structured JSON from the LLM response.
+	// The LLM MUST return the structured JSON shape we asked for. If it
+	// doesn't, we refuse the plan rather than wrapping the raw response
+	// as a "patch" and letting arbitrary prose land in a commit.
 	jsonStr := extractJSON(llmContent)
-	if jsonStr != "" {
-		var resp llmResponse
-		if err := json.Unmarshal([]byte(jsonStr), &resp); err == nil && len(resp.Fixes) > 0 {
-			fixes := make([]Fix, 0, len(resp.Fixes))
-			for _, f := range resp.Fixes {
-				op := gitops.FileOpUpdate
-				switch f.Operation {
-				case "create":
-					op = gitops.FileOpCreate
-				case "delete":
-					op = gitops.FileOpDelete
-				}
-				fixes = append(fixes, Fix{
-					Description: f.Description,
-					FilePath:    f.FilePath,
-					Patch:       f.Patch,
-					Operation:   op,
-				})
-			}
-
-			analysis := resp.Analysis
-			if resp.RiskAssessment != "" {
-				analysis += "\n\nRisk Assessment: " + resp.RiskAssessment
-			}
-
-			riskScore := -1 // Sentinel: let estimateRisk calculate.
-			if resp.RiskScore != nil {
-				riskScore = *resp.RiskScore
-			}
-
-			return fixes, analysis, riskScore
+	if jsonStr == "" {
+		return nil, llmContent, -1
+	}
+	var resp llmResponse
+	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+		return nil, llmContent, -1
+	}
+	if len(resp.Fixes) == 0 {
+		return nil, resp.Analysis, -1
+	}
+	if len(resp.Fixes) > maxFixesPerPlan {
+		resp.Fixes = resp.Fixes[:maxFixesPerPlan]
+	}
+	validated := make([]Fix, 0, len(resp.Fixes))
+	for _, f := range resp.Fixes {
+		op, ok := parseFixOperation(f.Operation)
+		if !ok {
+			continue
 		}
+		if !validFixFilePath(f.FilePath) {
+			continue
+		}
+		if len(f.Patch) > maxFixPatchBytes {
+			continue
+		}
+		// A create/update with empty content would land as a commit that
+		// blanks out the target file. Only delete legitimately has no
+		// patch body — the operation carries the intent by itself.
+		if op != gitops.FileOpDelete && strings.TrimSpace(f.Patch) == "" {
+			continue
+		}
+		desc := f.Description
+		if len(desc) > maxFixDescriptionSize {
+			desc = desc[:maxFixDescriptionSize]
+		}
+		validated = append(validated, Fix{
+			Description: desc,
+			FilePath:    f.FilePath,
+			Patch:       f.Patch,
+			Operation:   op,
+		})
+	}
+	if len(validated) == 0 {
+		return nil, resp.Analysis, -1
 	}
 
-	// Fallback: LLM returned unstructured text. Wrap as a single fix.
-	return []Fix{
-		{
-			Description: fmt.Sprintf("Fix %s: %s", finding.RuleType, finding.Title),
-			FilePath:    fmt.Sprintf("k8s/%s/%s.yaml", finding.ResourceNamespace, finding.ResourceName),
-			Patch:       llmContent,
-			Operation:   gitops.FileOpUpdate,
-		},
-	}, llmContent, -1
+	analysis = resp.Analysis
+	if resp.RiskAssessment != "" {
+		analysis += "\n\nRisk Assessment: " + resp.RiskAssessment
+	}
+
+	riskScore = -1 // Sentinel: let estimateRisk calculate when LLM omits.
+	if resp.RiskScore != nil {
+		riskScore = *resp.RiskScore
+	}
+	_ = finding // retained for future finding-scoped validation.
+	return validated, analysis, riskScore
+}
+
+// parseFixOperation maps the LLM's operation string to a gitops.FileOp.
+// Anything we don't explicitly accept is rejected — no silent fallback
+// to "update" that would let a hallucinated operation overwrite a file.
+func parseFixOperation(op string) (gitops.FileOp, bool) {
+	switch op {
+	case "create":
+		return gitops.FileOpCreate, true
+	case "update":
+		return gitops.FileOpUpdate, true
+	case "delete":
+		return gitops.FileOpDelete, true
+	default:
+		return "", false
+	}
+}
+
+// validFixFilePath enforces the minimum shape of a repo-relative path we
+// will ever commit: non-empty, bounded length, no path-traversal
+// segments, no absolute paths, no NUL/control bytes. The downstream
+// GitHub engine applies additional URL-escaping and rejects backslashes
+// via safeRepoPath; this is a belt-and-braces check at the LLM boundary.
+func validFixFilePath(p string) bool {
+	if p == "" || len(p) > maxFixFilePathLen {
+		return false
+	}
+	if strings.HasPrefix(p, "/") || strings.Contains(p, "\x00") {
+		return false
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // extractJSON finds JSON content in an LLM response, handling markdown code blocks.

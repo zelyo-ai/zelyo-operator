@@ -86,12 +86,11 @@ type presetStore struct {
 var defaultPresetStore = &presetStore{
 	status: map[string]*PresetStatus{},
 	configStatus: ConfigStatus{
-		// Demo default: pretend GitOps is already connected so the PR flow
-		// is the hero path. Real deployments will populate this from the
-		// ZelyoConfig + GitOpsRepository reconcilers.
-		GitOpsConfigured: true,
-		GitOpsRepo:       "zelyo-ai/platform-gitops",
-		DemoMode:         true,
+		// Real deployments derive GitOpsConfigured/GitOpsRepo live from the
+		// GitOpsRepositoryList in Server.resolveConfigStatus; we default to
+		// "not connected" so the UI never claims GitOps is wired up when the
+		// cluster has no GitOpsRepository resource.
+		DemoMode: true,
 	},
 }
 
