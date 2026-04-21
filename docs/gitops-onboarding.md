@@ -164,10 +164,10 @@ Look for these conditions:
 
 Two objects are required to actually open PRs — `ZelyoConfig.spec.mode: protect` alone does nothing without a `RemediationPolicy`:
 
-**4a. Switch the global mode to `protect`.** This flips the remediation engine's strategy from `dry-run` to `gitops-pr`:
+**4a. Switch the global mode to `protect`.** This flips the remediation engine's strategy from `dry-run` to `gitops-pr`. `ZelyoConfig` is cluster-scoped, so no `-n` flag:
 
 ```bash
-kubectl patch zelyoconfig zelyo -n zelyo-system --type=merge -p '{"spec":{"mode":"protect"}}'
+kubectl patch zelyoconfig zelyo --type=merge -p '{"spec":{"mode":"protect"}}'
 ```
 
 **4b. Create a `RemediationPolicy` pointed at the `GitOpsRepository` from Step 2.** This is the controller that actually queries the correlator for open incidents, generates fix plans, and submits PRs:
@@ -181,8 +181,7 @@ metadata:
 spec:
   gitOpsRepository: production-manifests   # must match a GitOpsRepository CR
   severityFilter: high                     # critical | high | medium | low
-  maxConcurrentPRs: 3
-  # targetPolicies: []                     # optional — restrict to specific SecurityPolicy names
+  maxConcurrentPRs: 3                      # cap per reconcile cycle (not a global open-PR count)
   prTemplate:
     titlePrefix: "[Zelyo Operator]"
     labels: ["auto-fix", "security"]
@@ -190,7 +189,7 @@ spec:
 
 No PRs? Check all three:
 
-- `kubectl get zelyoconfig zelyo -n zelyo-system -o jsonpath='{.spec.mode}'` → `protect`
+- `kubectl get zelyoconfig zelyo -o jsonpath='{.spec.mode}'` → `protect`
 - `kubectl get gitopsrepository <name> -n zelyo-system` → phase `Synced`
 - `kubectl describe remediationpolicy <name> -n zelyo-system` → phase `Active`, `ObservedGeneration` up to date
 

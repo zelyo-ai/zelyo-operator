@@ -325,12 +325,12 @@ All three pieces are required — skipping any one of them means no PRs:
 | --- | --- |
 | `ZelyoConfig.spec.mode: protect` | Flips the remediation engine from `dry-run` to `gitops-pr`. Without this, plans are logged but never submitted. |
 | `GitOpsRepository` | Tells Zelyo which repo, branch, and paths to write fixes into, and provides Git auth. |
-| `RemediationPolicy` | The only controller that calls `GeneratePlan` + `ApplyPlan`. Gates which incidents produce PRs via `severityFilter`, `targetPolicies`, and `maxConcurrentPRs`. |
+| `RemediationPolicy` | The only controller that calls `GeneratePlan` + `ApplyPlan`. `severityFilter` gates which incidents qualify; `maxConcurrentPRs` caps PR submissions per reconcile cycle (not a global limit on open PRs). |
 
-**0. Switch `ZelyoConfig` to Protect mode:**
+**0. Switch `ZelyoConfig` to Protect mode** (`ZelyoConfig` is cluster-scoped — no `-n` flag):
 
 ```bash
-kubectl patch zelyoconfig zelyo -n zelyo-system --type=merge -p '{"spec":{"mode":"protect"}}'
+kubectl patch zelyoconfig zelyo --type=merge -p '{"spec":{"mode":"protect"}}'
 ```
 
 **1. Create a GitHub token secret:**
@@ -367,14 +367,13 @@ metadata:
   name: auto-fix
   namespace: zelyo-system
 spec:
-  targetPolicies: []
   gitOpsRepository: infra-repo
   prTemplate:
     titlePrefix: "[Zelyo Auto-Fix]"
     labels: ["security", "automated"]
     branchPrefix: "zelyo/fix-"
   severityFilter: high
-  maxConcurrentPRs: 3
+  maxConcurrentPRs: 3   # per reconcile cycle
   dryRun: false
   autoMerge: false
 ```
