@@ -152,8 +152,16 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 	}()
 
+	// Observe server-lifecycle cancellation in addition to the per-request
+	// context. http.Server.Shutdown waits for active handlers to return on
+	// their own (up to its timeout); an SSE loop that only watches
+	// r.Context() would stall graceful shutdown until the 10s timeout.
+	serverCtx := s.backgroundContext()
+
 	for {
 		select {
+		case <-serverCtx.Done():
+			return
 		case <-r.Context().Done():
 			return
 		case event := <-ch:
@@ -236,20 +244,28 @@ func (s *Server) Start(ctx context.Context) error {
 	select {
 	case err := <-serveErr:
 		if err != nil && err != http.ErrServerClosed {
-			return err
+			return fmt.Errorf("dashboard listen: %w", err)
 		}
 		return nil
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			s.log.Error(err, "Dashboard server shutdown error")
+		shutdownErr := server.Shutdown(shutdownCtx)
+		if shutdownErr != nil {
+			s.log.Error(shutdownErr, "Dashboard server shutdown error")
 		}
 		// Drain ListenAndServe's return; a real startup failure (bind
 		// error, cert load failure, ...) can race ctx.Done() and would
 		// otherwise be silently discarded on this branch.
 		if err := <-serveErr; err != nil && err != http.ErrServerClosed {
-			return err
+			return fmt.Errorf("dashboard listen during shutdown: %w", err)
+		}
+		// Shutdown failures (e.g., DeadlineExceeded from a stalled
+		// handler) are real stop failures — don't mask them by returning
+		// nil just because ListenAndServe reported the expected
+		// ErrServerClosed.
+		if shutdownErr != nil {
+			return fmt.Errorf("dashboard shutdown: %w", shutdownErr)
 		}
 		return nil
 	}
