@@ -67,16 +67,24 @@ func (f *budgetTestGitOpsEngine) ListOpenPRs(_ context.Context, _, _ string) ([]
 
 func (f *budgetTestGitOpsEngine) Close() error { return nil }
 
-// budgetTestLLMClient is a no-op LLM — the budget-exhausted path must not
-// reach plan generation. If any test accidentally triggers Complete, the
-// call count exposes the regression.
+// budgetTestLLMClient is a fake LLM used by the budget + audit-mode tests.
+// The budget-exhausted path must not reach plan generation — the default
+// (empty) response is zero-fixes JSON, which GeneratePlan rejects before
+// ApplyPlan runs, so any bump to `calls` in that path exposes the
+// regression. Tests that need a successful plan (e.g. audit-mode) set
+// `response` to a valid-fixes JSON string.
 type budgetTestLLMClient struct {
-	calls atomic.Int32
+	response string
+	calls    atomic.Int32
 }
 
 func (f *budgetTestLLMClient) Complete(_ context.Context, _ llm.Request) (*llm.Response, error) {
 	f.calls.Add(1)
-	return &llm.Response{Content: `{"analysis":"x","fixes":[]}`, Model: "fake"}, nil
+	body := f.response
+	if body == "" {
+		body = `{"analysis":"x","fixes":[]}`
+	}
+	return &llm.Response{Content: body, Model: "fake"}, nil
 }
 func (f *budgetTestLLMClient) Provider() llm.Provider { return "fake" }
 func (f *budgetTestLLMClient) Close() error           { return nil }
@@ -259,6 +267,115 @@ var _ = Describe("RemediationPolicy Controller", func() {
 			Expect(k8sClient.Get(ctx, policyKey, &updated)).To(Succeed())
 			Expect(updated.Status.OpenPRs).To(Equal(int32(3)))
 			Expect(updated.Status.RemediationsApplied).To(Equal(int32(0)))
+		})
+	})
+
+	// Regression guard for audit-mode status accounting. In StrategyDryRun
+	// (and StrategyReport), remediation.Engine.ApplyPlan returns (nil, nil) —
+	// an incident is "handled" for budget purposes but no actual PR is
+	// created. Previously processIncidents bumped a single prsCreated
+	// counter on every handled incident, so `status.openPRs = openPRs +
+	// prsCreated` reported phantom PRs under audit mode. This test pins
+	// the fix: in dry-run, status.openPRs stays at the provider count and
+	// status.remediationsApplied does not change.
+	Context("When the policy is in dry-run (audit) mode", func() {
+		const (
+			policyName = "audit-test-policy"
+			repoName   = "audit-test-repo"
+			ns         = "default"
+		)
+		ctx := context.Background()
+		policyKey := types.NamespacedName{Name: policyName, Namespace: ns}
+		repoKey := types.NamespacedName{Name: repoName, Namespace: ns}
+
+		BeforeEach(func() {
+			Expect(k8sClient.Create(ctx, &zelyov1alpha1.GitOpsRepository{
+				ObjectMeta: metav1.ObjectMeta{Name: repoName, Namespace: ns},
+				Spec: zelyov1alpha1.GitOpsRepositorySpec{
+					URL:        "https://github.com/zelyo-ai/audit-test.git",
+					Branch:     "main",
+					Paths:      []string{"."},
+					Provider:   "github",
+					AuthSecret: "nonexistent-secret",
+				},
+			})).To(Succeed())
+			Expect(k8sClient.Create(ctx, &zelyov1alpha1.RemediationPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: policyName, Namespace: ns},
+				Spec: zelyov1alpha1.RemediationPolicySpec{
+					GitOpsRepository: repoName,
+					MaxConcurrentPRs: 5,
+					SeverityFilter:   "high",
+					DryRun:           true,
+				},
+			})).To(Succeed())
+		})
+
+		AfterEach(func() {
+			policy := &zelyov1alpha1.RemediationPolicy{}
+			if err := k8sClient.Get(ctx, policyKey, policy); err == nil {
+				Expect(k8sClient.Delete(ctx, policy)).To(Succeed())
+			}
+			repo := &zelyov1alpha1.GitOpsRepository{}
+			if err := k8sClient.Get(ctx, repoKey, repo); err == nil {
+				Expect(k8sClient.Delete(ctx, repo)).To(Succeed())
+			}
+		})
+
+		It("does not inflate status.openPRs or status.remediationsApplied", func() {
+			// One high-severity incident so processIncidents enters the loop.
+			corrEngine := correlator.NewEngine(&correlator.Config{CorrelationWindow: 5 * time.Minute})
+			corrEngine.Ingest(&correlator.Event{
+				Type: correlator.EventSecurityViolation, Severity: "high",
+				Namespace: "prod", Resource: "payments", Message: "privileged container",
+			})
+			incident := corrEngine.Ingest(&correlator.Event{
+				Type: correlator.EventAnomaly, Severity: "high",
+				Namespace: "prod", Resource: "payments", Message: "restart spike",
+			})
+			Expect(incident).NotTo(BeNil())
+
+			// Provider has 1 unrelated Zelyo PR already open. After
+			// reconcile, status.openPRs MUST stay at 1 — not 2 — because
+			// dry-run doesn't open a real PR even though ApplyPlan
+			// returned nil-error.
+			fakeGit := &budgetTestGitOpsEngine{
+				openPRs: []gitops.PullRequestResult{
+					{Number: 1, Branch: "zelyo-operator/fix/preexisting", URL: "https://example/1"},
+				},
+			}
+			// LLM returns a valid plan so GeneratePlan succeeds and we
+			// reach ApplyPlan (which short-circuits in dry-run).
+			fakeLLM := &budgetTestLLMClient{
+				response: `{"analysis":"x","fixes":[{"file_path":"k8s/a.yaml","description":"d","patch":"apiVersion: v1","operation":"update"}]}`,
+			}
+			remEngine := remediation.NewEngine(fakeLLM, fakeGit,
+				remediation.EngineConfig{Strategy: remediation.StrategyDryRun},
+				logr.Discard())
+
+			reconciler := &RemediationPolicyReconciler{
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				Recorder:          record.NewFakeRecorder(100),
+				CorrelatorEngine:  corrEngine,
+				RemediationEngine: remEngine,
+			}
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: policyKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("asserting the LLM ran (incident was handled) but no real PR was created")
+			Expect(fakeLLM.calls.Load()).To(Equal(int32(1)),
+				"dry-run must still generate the plan so operators see the analysis")
+			Expect(fakeGit.createCalls.Load()).To(Equal(int32(0)),
+				"dry-run must NOT call CreatePullRequest")
+
+			By("asserting status.openPRs reflects provider count only — no phantom PR")
+			var updated zelyov1alpha1.RemediationPolicy
+			Expect(k8sClient.Get(ctx, policyKey, &updated)).To(Succeed())
+			Expect(updated.Status.OpenPRs).To(Equal(int32(1)),
+				"must equal the 1 pre-existing PR; dry-run must not inflate to 2")
+			Expect(updated.Status.RemediationsApplied).To(Equal(int32(0)),
+				"dry-run must not increment the lifetime PR counter")
 		})
 	})
 })
