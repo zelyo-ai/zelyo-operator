@@ -128,13 +128,15 @@ func (f *fakeDryRunGitops) ListOpenPRs(_ context.Context, _, _ string) ([]gitops
 }
 func (f *fakeDryRunGitops) Close() error { return nil }
 
-// structured JSON plan produced by fakeDryRunLLM — single safe update fix
-// that passes extractFixes validation.
+// structured JSON plan produced by fakeDryRunLLM — single safe update fix.
+// The file_path must live under the test's repo.Spec.Paths (`clusters/`) so
+// it survives the remediation engine's allowed-paths filter; otherwise all
+// fixes get filtered out and GeneratePlan returns an error.
 const fakeDryRunLLMResponse = `{
     "analysis": "Container nginx runs as root; enforce runAsNonRoot.",
     "fixes": [
         {
-            "file_path": "k8s/app/nginx.yaml",
+            "file_path": "clusters/app/nginx.yaml",
             "description": "Set runAsNonRoot=true",
             "patch": "apiVersion: apps/v1\nkind: Deployment",
             "operation": "update"
