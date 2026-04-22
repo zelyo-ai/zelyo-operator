@@ -126,6 +126,15 @@ func (e *Engine) getGitOpsEngine(owner, repo string) gitops.Engine {
 	return e.gitopsEngine
 }
 
+// GitOpsEngineForRepo returns the GitOps engine configured for the given
+// owner/repo, falling back to the default engine when no repo-specific
+// engine is registered. Returns nil when no engine is configured.
+// Exposed so callers (e.g. the remediation controller) can query open-PR
+// state outside of the plan-application path.
+func (e *Engine) GitOpsEngineForRepo(owner, repo string) gitops.Engine {
+	return e.getGitOpsEngine(owner, repo)
+}
+
 // SetLLMClient updates the LLM client used by the engine.
 func (e *Engine) SetLLMClient(client llm.Client) {
 	e.mu.Lock()

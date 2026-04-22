@@ -146,9 +146,9 @@ func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// ── Step 3: Query correlator for open incidents ──
-	var prsCreated int32
+	var prsCreated, openPRs int32
 	if r.CorrelatorEngine != nil && r.RemediationEngine != nil {
-		prsCreated = r.processIncidents(ctx, policy, repo)
+		prsCreated, openPRs = r.processIncidents(ctx, policy, repo)
 	} else {
 		log.Info("Correlator or remediation engine not configured — skipping active remediation")
 	}
@@ -158,6 +158,10 @@ func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	policy.Status.Phase = zelyov1alpha1.PhaseActive
 	policy.Status.LastRun = &now
 	policy.Status.RemediationsApplied += prsCreated
+	// OpenPRs reflects the total count of open Zelyo-generated PRs in the
+	// target repo after this cycle: already-open PRs observed at the start
+	// plus any this cycle opened.
+	policy.Status.OpenPRs = openPRs + prsCreated
 	policy.Status.ObservedGeneration = policy.Generation
 	conditions.MarkTrue(&policy.Status.Conditions, zelyov1alpha1.ConditionReady,
 		zelyov1alpha1.ReasonReconcileSuccess,
@@ -178,17 +182,24 @@ func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 // processIncidents queries the correlator for open incidents, filters by severity,
 // generates remediation plans, and optionally submits PRs.
+//
+// Returns (prsCreated, openPRs) where openPRs is the number of Zelyo-generated
+// PRs already open on the target repo *at the start of this cycle* — i.e.
+// before any PR this cycle may have created. Callers combine them to derive
+// status.openPRs.
 func (r *RemediationPolicyReconciler) processIncidents(
 	ctx context.Context,
 	policy *zelyov1alpha1.RemediationPolicy,
 	repo *zelyov1alpha1.GitOpsRepository,
-) int32 {
+) (prsCreated, openPRs int32) {
 	log := logf.FromContext(ctx)
 
 	incidents := r.CorrelatorEngine.GetOpenIncidents()
 	if len(incidents) == 0 {
 		log.Info("No open incidents found — nothing to remediate")
-		return 0
+		// Even with no incidents, surface the current open-PR count to
+		// status so users can see it via `kubectl get remediationpolicy`.
+		return 0, r.countOpenPRs(ctx, policy, repo)
 	}
 
 	log.Info("Found open incidents", "count", len(incidents))
@@ -201,22 +212,7 @@ func (r *RemediationPolicyReconciler) processIncidents(
 	minSev := severityOrder[severityFilter]
 
 	// ── Step 3: Initialize GitOps Engine from Secret ──
-	if repo.Spec.AuthSecret != "" {
-		secret := &corev1.Secret{}
-		secretKey := types.NamespacedName{Name: repo.Spec.AuthSecret, Namespace: repo.Namespace}
-		if err := r.Get(ctx, secretKey, secret); err == nil {
-			token := string(secret.Data["token"])
-			if token == "" {
-				token = string(secret.Data["api-key"])
-			}
-			if token != "" {
-				ghClient := github.NewPATClient(token, "")
-				ghEngine := github.NewEngine(ghClient, log.WithName("github-engine"))
-				r.RemediationEngine.SetGitOpsEngine(ghEngine)
-				log.Info("Successfully initialized GitOps engine for remediation", "repo", repo.Name)
-			}
-		}
-	}
+	r.ensureGitOpsEngineFromSecret(ctx, repo)
 
 	// Respect MaxConcurrentPRs limit.
 	maxPRs := policy.Spec.MaxConcurrentPRs
@@ -227,10 +223,21 @@ func (r *RemediationPolicyReconciler) processIncidents(
 	// Parse repo owner/name from URL for PR submission.
 	repoOwner, repoName := parseRepoURL(repo.Spec.URL)
 
-	var prsCreated int32
+	// Count already-open Zelyo-generated PRs on the target repo so the
+	// MaxConcurrentPRs cap is honored across reconciles, not just within
+	// a single cycle.
+	openPRs = r.countOpenPRsForProvider(ctx, policy, repoOwner, repoName)
+	budget := maxPRs - openPRs
+	if budget <= 0 {
+		log.Info("MaxConcurrentPRs budget exhausted by already-open PRs — skipping",
+			"limit", maxPRs, "openPRs", openPRs)
+		return 0, openPRs
+	}
+
 	for _, incident := range incidents {
-		if prsCreated >= maxPRs {
-			log.Info("MaxConcurrentPRs limit reached", "limit", maxPRs)
+		if prsCreated >= budget {
+			log.Info("MaxConcurrentPRs budget reached this cycle",
+				"limit", maxPRs, "openPRs", openPRs, "createdThisCycle", prsCreated)
 			break
 		}
 
@@ -287,7 +294,97 @@ func (r *RemediationPolicyReconciler) processIncidents(
 		prsCreated++
 	}
 
-	return prsCreated
+	return prsCreated, openPRs
+}
+
+// ensureGitOpsEngineFromSecret reads the repo's AuthSecret (if any) and,
+// when a usable PAT/app token is present, constructs a GitHub engine and
+// registers it on the remediation engine. The function is deliberately
+// permissive: a missing secret, unreadable secret, or empty token
+// silently leaves whatever GitOps engine is already configured in place
+// (including injected test engines) — there is no visible error
+// condition because the surrounding reconciler handles missing creds by
+// degrading gracefully to no-op remediation.
+func (r *RemediationPolicyReconciler) ensureGitOpsEngineFromSecret(
+	ctx context.Context,
+	repo *zelyov1alpha1.GitOpsRepository,
+) {
+	if repo.Spec.AuthSecret == "" {
+		return
+	}
+	log := logf.FromContext(ctx)
+	secret := &corev1.Secret{}
+	secretKey := types.NamespacedName{Name: repo.Spec.AuthSecret, Namespace: repo.Namespace}
+	if err := r.Get(ctx, secretKey, secret); err != nil {
+		return
+	}
+	token := string(secret.Data["token"])
+	if token == "" {
+		token = string(secret.Data["api-key"])
+	}
+	if token == "" {
+		return
+	}
+	ghClient := github.NewPATClient(token, "")
+	ghEngine := github.NewEngine(ghClient, log.WithName("github-engine"))
+	r.RemediationEngine.SetGitOpsEngine(ghEngine)
+	log.Info("Successfully initialized GitOps engine for remediation", "repo", repo.Name)
+}
+
+// countOpenPRs resolves the repo owner/name from the GitOpsRepository spec
+// and delegates to countOpenPRsForProvider.
+func (r *RemediationPolicyReconciler) countOpenPRs(
+	ctx context.Context,
+	policy *zelyov1alpha1.RemediationPolicy,
+	repo *zelyov1alpha1.GitOpsRepository,
+) int32 {
+	repoOwner, repoName := parseRepoURL(repo.Spec.URL)
+	return r.countOpenPRsForProvider(ctx, policy, repoOwner, repoName)
+}
+
+// countOpenPRsForProvider queries the configured GitOps provider for the
+// number of currently-open Zelyo-generated PRs on owner/repo. The provider's
+// ListOpenPRs implementation is already expected to filter out non-Zelyo
+// PRs (by branch-prefix convention or labels).
+//
+// Errors are logged and treated as zero: a transient provider failure
+// must not permanently block remediation. Callers still respect the
+// per-cycle loop bound, so the worst case is a temporarily-inflated
+// per-cycle budget during provider outages.
+//
+// When multiple RemediationPolicies target the same repo, they share the
+// open-PR count (the cap is applied per repo, not per policy). Per-policy
+// scoping requires PRTemplate.BranchPrefix to be both configurable and
+// actually propagated into the branch name — that wiring is not yet in
+// place (BranchName hardcodes its prefix), so adding a prefix filter here
+// would silently match zero PRs under the default config and re-break
+// the cap we are fixing.
+func (r *RemediationPolicyReconciler) countOpenPRsForProvider(
+	ctx context.Context,
+	_ *zelyov1alpha1.RemediationPolicy,
+	owner, repo string,
+) int32 {
+	log := logf.FromContext(ctx)
+
+	if owner == "" || repo == "" {
+		return 0
+	}
+	if r.RemediationEngine == nil {
+		return 0
+	}
+	ge := r.RemediationEngine.GitOpsEngineForRepo(owner, repo)
+	if ge == nil {
+		return 0
+	}
+
+	existing, err := ge.ListOpenPRs(ctx, owner, repo)
+	if err != nil {
+		log.Error(err, "Failed to list open PRs — treating as zero for this cycle",
+			"owner", owner, "repo", repo)
+		return 0
+	}
+	//nolint:gosec // len bounded by GitHub API page size (100).
+	return int32(len(existing))
 }
 
 // incidentToFinding converts a correlator incident to a scanner finding for the
