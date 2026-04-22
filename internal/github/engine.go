@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,6 +32,41 @@ import (
 
 	"github.com/zelyo-ai/zelyo-operator/internal/gitops"
 )
+
+// APIError is the typed error doRequest returns on any non-2xx response
+// from GitHub. Callers use errors.As to branch on HTTP status codes —
+// e.g. createRef's 422-on-branch-exists — rather than string-matching the
+// formatted message, which was the brittle pre-refactor pattern.
+type APIError struct {
+	StatusCode int
+	Body       string // Truncated response body for diagnostics.
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("GitHub API error %d: %s", e.StatusCode, e.Body)
+}
+
+// githubPullResponse is the subset of GitHub's PR payload we decode. Shared
+// by CreatePullRequest, findOpenPRByHeadBranch, ListOpenPRs, and openPR so
+// the decoding shape is defined once.
+//
+// Head.Label is the canonical "owner:ref" identifier. Matching on Label is
+// how we tell a same-repo PR (head.label = repo_owner:branch) apart from a
+// fork PR that happens to use the same branch name (head.label =
+// fork_owner:branch). Filtering only on Head.Ref would let a fork PR
+// false-match the dedup check.
+type githubPullResponse struct {
+	Number  int    `json:"number"`
+	HTMLURL string `json:"html_url"`
+	Head    struct {
+		Ref   string `json:"ref"`
+		Label string `json:"label"`
+	} `json:"head"`
+	CreatedAt time.Time `json:"created_at"`
+	Labels    []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+}
 
 // GitHubEngine implements gitops.Engine using the GitHub REST API.
 // It supports GitHub App authentication and all CRUD operations needed
@@ -69,12 +105,46 @@ func (e *GitHubEngine) CreatePullRequest(ctx context.Context, pr *gitops.PullReq
 	}
 
 	// Step 2: Create the head branch from the base.
+	//
+	// GitHub returns 422 when the branch already exists. Historically the
+	// engine swallowed that error and proceeded to Step 3 (commit files)
+	// and Step 4 (openPR). If a PR was already open against this branch,
+	// that flow produced the 311-commits-on-one-PR footgun: openPR would
+	// fail with 422 "already exists", but the file commits from Step 3 had
+	// already landed on the open PR's branch. Every subsequent reconcile
+	// piled another commit on the same PR.
+	//
+	// Fix: when the branch already exists, check whether it already backs
+	// an open PR BEFORE committing. If yes, short-circuit and return the
+	// existing PR — no new commits, no duplicate opens. If the branch
+	// exists without an open PR (legitimate when a user deletes a PR
+	// without deleting the branch), proceed with commit + openPR.
+	//
+	// If the dedup lookup itself fails, abort rather than risk silently
+	// appending commits to an open PR. Remediation for this branch will
+	// retry next reconcile — a temporary deferral is cheaper than
+	// permanent commit pollution on an already-open PR.
 	if err := e.createRef(ctx, pr.RepoOwner, pr.RepoName, "refs/heads/"+pr.HeadBranch, baseSHA); err != nil {
-		// Branch might already exist from a previous attempt — continue.
-		if !strings.Contains(err.Error(), "422") {
+		// 422 Unprocessable Entity → branch already exists. Any other
+		// status is a hard failure we can't recover from. errors.As on
+		// APIError replaces the earlier string-match on "422" — the
+		// message format is no longer part of the contract.
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnprocessableEntity {
 			return nil, fmt.Errorf("creating head branch: %w", err)
 		}
-		e.log.Info("Branch already exists, continuing", "branch", pr.HeadBranch)
+		existing, lookupErr := e.findOpenPRByHeadBranch(ctx, pr.RepoOwner, pr.RepoName, pr.HeadBranch)
+		if lookupErr != nil {
+			return nil, fmt.Errorf("head branch %q already exists but could not verify absence of open PR: %w",
+				pr.HeadBranch, lookupErr)
+		}
+		if existing != nil {
+			e.log.Info("Skipping commit: an open PR already covers this head branch",
+				"number", existing.Number, "branch", pr.HeadBranch, "url", existing.URL)
+			return existing, nil
+		}
+		e.log.Info("Branch already exists without an open PR — proceeding",
+			"branch", pr.HeadBranch)
 	}
 
 	// Step 3: Commit each file to the head branch.
@@ -147,6 +217,52 @@ func (e *GitHubEngine) GetFile(ctx context.Context, owner, repo, path, ref strin
 	return decoded[:n], nil
 }
 
+// findOpenPRByHeadBranch queries GitHub for any open PR whose head branch
+// is exactly `branch` in the same repo (no cross-fork lookup). Returns
+// (nil, nil) when no matching PR exists, the PR when one does, or an error
+// when the API call failed.
+//
+// GitHub rejects a second open PR against an already-in-use head branch,
+// so the result set is size 0 or 1 — no pagination. The `head=owner:ref`
+// query narrows server-side; we additionally filter in-memory on the full
+// "owner:ref" label so a mock or proxy that ignores the query parameter
+// cannot return a spurious match from a fork PR that happens to use the
+// same branch name (head.ref alone would false-match — a real concern for
+// any heavily-forked repo).
+//
+// Used by CreatePullRequest to short-circuit when the target head branch
+// already backs an open PR; see the comment there for the 311-commits
+// footgun this guards against.
+func (e *GitHubEngine) findOpenPRByHeadBranch(ctx context.Context, owner, repo, branch string) (*gitops.PullRequestResult, error) {
+	wantLabel := owner + ":" + branch
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open&head=%s",
+		e.baseURL, owner, repo, url.QueryEscape(wantLabel))
+
+	body, err := e.doRequest(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("looking up open PR for branch %q: %w", branch, err)
+	}
+
+	var prs []githubPullResponse
+	if err := json.Unmarshal(body, &prs); err != nil {
+		return nil, fmt.Errorf("decoding PR lookup response: %w", err)
+	}
+	for _, pr := range prs {
+		// Require an exact owner:ref match. GitHub always populates
+		// head.label as "owner_login:ref_name"; a fork PR with the same
+		// ref name has a different label and is correctly rejected here.
+		if pr.Head.Label == wantLabel {
+			return &gitops.PullRequestResult{
+				Number:    pr.Number,
+				URL:       pr.HTMLURL,
+				Branch:    pr.Head.Ref,
+				CreatedAt: pr.CreatedAt,
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
 // ListOpenPRs implements gitops.Engine.ListOpenPRs by paginating over
 // GitHub's list-PRs endpoint. A single page is 100 PRs (the endpoint's max);
 // we keep requesting successive pages until a page comes back short or we
@@ -165,17 +281,7 @@ func (e *GitHubEngine) ListOpenPRs(ctx context.Context, owner, repo string) ([]g
 			return nil, fmt.Errorf("listing open PRs (page %d): %w", page, err)
 		}
 
-		var prs []struct {
-			Number  int    `json:"number"`
-			HTMLURL string `json:"html_url"`
-			Head    struct {
-				Ref string `json:"ref"`
-			} `json:"head"`
-			CreatedAt time.Time `json:"created_at"`
-			Labels    []struct {
-				Name string `json:"name"`
-			} `json:"labels"`
-		}
+		var prs []githubPullResponse
 		if err := json.Unmarshal(body, &prs); err != nil {
 			return nil, fmt.Errorf("decoding PRs response (page %d): %w", page, err)
 		}
@@ -382,7 +488,10 @@ func (e *GitHubEngine) doRequest(ctx context.Context, method, reqURL string, pay
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("GitHub API error %d: %s", resp.StatusCode, truncate(string(body), 200))
+		return nil, &APIError{
+			StatusCode: resp.StatusCode,
+			Body:       truncate(string(body), 200),
+		}
 	}
 
 	return body, nil
